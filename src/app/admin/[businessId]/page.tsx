@@ -23,7 +23,7 @@ export default function CashierScannerPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const requestRef = useRef<number>();
+  const requestRef = useRef<number>(0);
 
   const startCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
