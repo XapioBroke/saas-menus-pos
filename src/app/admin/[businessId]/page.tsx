@@ -1,5 +1,7 @@
 "use client";
 
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
@@ -7,6 +9,10 @@ import { db } from "@/lib/firebase";
 import jsQR from "jsqr";
 
 export default function CashierScannerPage() {
+  const handleLogout = async () => {
+  await signOut(auth);
+  // El Layout Guard detectará que saliste y forzará la redirección automáticamente
+};  
   const params = useParams();
   const businessId = params.businessId as string;
 
