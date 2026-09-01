@@ -187,8 +187,7 @@ export default function CashierScannerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-6 px-4">
-      {/* Estilos inyectados: Animación láser y forzado de contraste anti-transparencias */}
+    <div className="min-h-screen bg-gray-50 py-8 px-4">
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes scanLaser {
           0% { top: 0px; opacity: 0; }
@@ -197,46 +196,41 @@ export default function CashierScannerPage() {
           100% { top: 100%; opacity: 0; }
         }
         .animate-laser { animation: scanLaser 2.5s linear infinite; }
-        
-        /* Forzamos visibilidad total en cualquier texto residual */
-        span, p, label {
-          color: #111827 !important;
-        }
       `}} />
 
       <div className="max-w-md mx-auto space-y-6">
         
-        <header className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 text-center relative">
-          <button onClick={() => window.history.back()} className="absolute left-4 top-6 text-gray-800 hover:text-black font-bold p-2 bg-gray-100 rounded-xl">
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 19l-7-7 7-7" /></svg>
+        <header className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center relative">
+          <button onClick={() => window.history.back()} className="absolute left-6 top-6 text-gray-400 hover:text-gray-900">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
-          <h1 className="text-xl font-black text-gray-900">Terminal de Caja (POS)</h1>
-          <p className="text-sm font-bold text-gray-700 mt-1">Escanea el QR de la membresía</p>
+          <h1 className="text-xl font-extrabold text-gray-900">Terminal POS</h1>
+          <p className="text-sm text-gray-500 mt-1">Identifica al socio VIP</p>
         </header>
 
         {!customerData && (
-          <div className="bg-white rounded-2xl shadow-md border border-gray-200 p-2 flex gap-2">
-            <button onClick={() => setInputMode("camera")} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all shadow-sm ${inputMode === 'camera' ? 'bg-black text-white shadow-md' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}>Cámara / Escáner</button>
-            <button onClick={() => setInputMode("manual")} className={`flex-1 py-3 text-sm font-black rounded-xl transition-all shadow-sm ${inputMode === 'manual' ? 'bg-black text-white shadow-md' : 'bg-gray-100 text-gray-900 hover:bg-gray-200'}`}>Código Manual</button>
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex gap-2">
+            <button onClick={() => setInputMode("camera")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors ${inputMode === 'camera' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>Escáner</button>
+            <button onClick={() => setInputMode("manual")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors ${inputMode === 'manual' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>Manual</button>
           </div>
         )}
 
         {!customerData && (
-          <div className="bg-white p-5 rounded-2xl shadow-md border border-gray-200">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
             {inputMode === "camera" ? (
               <div className="space-y-4">
                 
                 {cameraError ? (
-                  <div className="bg-amber-100 text-amber-900 p-4 rounded-xl text-sm font-extrabold text-center border border-amber-300">
-                    Cámara bloqueada por permisos. Usa el botón de archivo inferior.
+                  <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl text-sm font-semibold text-center border border-yellow-200">
+                    La cámara en vivo está bloqueada. Usa el botón de abajo para tomar una foto.
                   </div>
                 ) : (
-                  <div className="relative w-full h-[320px] bg-black rounded-2xl overflow-hidden shadow-inner">
+                  <div className="relative w-full h-[300px] bg-black rounded-2xl overflow-hidden shadow-inner">
                     <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted />
                     <canvas ref={canvasRef} className="hidden" />
                     
                     <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                      <div className="relative w-[230px] h-[230px]">
+                      <div className="relative w-[220px] h-[220px]">
                         <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl"></div>
                         <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl"></div>
                         <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl"></div>
@@ -247,70 +241,66 @@ export default function CashierScannerPage() {
                   </div>
                 )}
                 
-                {/* Botón de archivo transformado en pastilla de alto contraste */}
-                <div className="relative mt-2">
+                <div className="relative mt-4">
                   <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                  <div className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl text-center shadow-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-base">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
-                    Subir Foto del QR / Archivo
+                  <div className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-center shadow-md hover:bg-blue-700 flex items-center justify-center gap-2">
+                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                    Escanear Foto / Activar Cámara
                   </div>
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleManualSearch} className="space-y-4 py-2">
-                <label className="block text-sm font-black text-gray-900">Token ID del Cliente</label>
-                <input type="text" required value={manualToken} onChange={(e) => setManualToken(e.target.value)} placeholder="Ej. L5A9X2..." className="w-full bg-gray-50 border-2 border-gray-300 rounded-xl px-4 py-4 text-base font-bold text-gray-900 focus:outline-none focus:border-blue-600" />
-                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl hover:bg-blue-700 shadow-md text-base">Verificar Socio</button>
+              <form onSubmit={handleManualSearch} className="p-2 space-y-4">
+                <label className="block text-sm font-bold text-gray-700">Token ID del Cliente</label>
+                <input type="text" required value={manualToken} onChange={(e) => setManualToken(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none" />
+                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700">Verificar Socio</button>
               </form>
             )}
-            {message && <div className="mt-4 p-3 bg-gray-200 text-gray-900 rounded-xl text-sm font-black text-center border border-gray-300">{message}</div>}
+            {message && <div className="mt-4 p-3 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold text-center border">{message}</div>}
           </div>
         )}
 
         {customerData && (
-          <div className="bg-white p-6 rounded-2xl shadow-md border border-gray-200 space-y-5">
+          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
             <div className="border-b pb-4 flex justify-between items-start">
               <div>
-                <h2 className="font-black text-gray-900 text-2xl">{customerData.name}</h2>
-                <div className="mt-2 inline-block bg-emerald-100 text-emerald-900 px-4 py-1.5 rounded-full text-sm font-black border border-emerald-300 shadow-sm">
-                  Saldo actual: {customerData.points} Puntos
+                <h2 className="font-bold text-gray-900 text-xl">{customerData.name}</h2>
+                <div className="mt-2 inline-block bg-green-100 text-green-800 px-3 py-1 rounded-full text-sm font-extrabold border border-green-200">
+                  Saldo: {customerData.points} Puntos
                 </div>
               </div>
               <button 
                 onClick={() => { setCustomerData(null); startCamera(); }} 
-                className="text-xs bg-gray-200 text-gray-900 px-4 py-2 rounded-xl font-black hover:bg-gray-300 transition-colors shadow-sm"
+                className="text-xs bg-gray-200 text-gray-900 px-4 py-2 rounded-lg font-bold hover:bg-gray-300 transition-colors shadow-sm"
               >
-                Cambiar
+                Cambiar Cliente
               </button>
             </div>
             
-            {message && <div className="p-3 bg-blue-100 text-blue-900 rounded-xl text-sm font-black text-center border border-blue-200">{message}</div>}
+            {message && <div className="p-3 bg-blue-50 text-blue-800 rounded-xl text-sm font-semibold text-center">{message}</div>}
             
-            <form onSubmit={handleTransaction} className="space-y-5 pt-1">
-              <div className="flex bg-gray-100 p-1.5 rounded-xl border border-gray-300 gap-1">
-                <button type="button" onClick={() => setTransactionType("accumulate")} className={`flex-1 py-3 text-xs font-black rounded-lg transition-all ${transactionType === 'accumulate' ? 'bg-black text-white shadow-md' : 'text-gray-900 hover:bg-gray-200'}`}>Acumular (+)</button>
-                <button type="button" onClick={() => setTransactionType("redeem")} className={`flex-1 py-3 text-xs font-black rounded-lg transition-all ${transactionType === 'redeem' ? 'bg-black text-white shadow-md' : 'text-gray-900 hover:bg-gray-200'}`}>Canjear (-)</button>
+            <form onSubmit={handleTransaction} className="space-y-5 pt-2">
+              <div className="flex bg-gray-50 p-1 rounded-xl border border-gray-200">
+                <button type="button" onClick={() => setTransactionType("accumulate")} className={`flex-1 py-2 text-xs font-bold rounded-lg ${transactionType === 'accumulate' ? 'bg-white shadow-sm text-gray-900 border border-gray-200' : 'text-gray-500'}`}>Acumular (+)</button>
+                <button type="button" onClick={() => setTransactionType("redeem")} className={`flex-1 py-2 text-xs font-bold rounded-lg ${transactionType === 'redeem' ? 'bg-white shadow-sm text-gray-900 border border-gray-200' : 'text-gray-500'}`}>Canjear (-)</button>
               </div>
               
-              <div className="space-y-2">
-                <label className="block text-sm font-black text-gray-900">
-                  {transactionType === 'accumulate' ? 'Monto total de la compra ($)' : 'Puntos a canjear'}
-                </label>
+              <div>
                 <input 
                   type="number" 
                   required 
                   min="1" 
                   value={amountInput} 
                   onChange={(e) => setAmountInput(e.target.value)} 
-                  placeholder={transactionType === 'accumulate' ? 'Ej. 350' : 'Ej. 100'} 
-                  className="w-full bg-white border-2 border-gray-300 rounded-xl px-4 py-4 text-xl font-black text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-600 transition-colors text-center shadow-inner" 
+                  placeholder={transactionType === 'accumulate' ? 'Monto pagado ($)' : 'Puntos a restar'} 
+                  className="w-full bg-white border-2 border-gray-300 rounded-xl px-4 py-4 text-xl font-black text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-600 transition-colors text-center" 
                 />
               </div>
               
               <button 
                 type="submit" 
                 disabled={loading} 
-                className="w-full bg-black text-white font-black py-4 rounded-xl text-base hover:bg-gray-800 shadow-xl tracking-wide"
+                className="w-full bg-gray-900 text-white font-extrabold py-4 rounded-xl text-base hover:bg-gray-800 shadow-lg"
               >
                 {loading ? "Procesando..." : "Confirmar Operación"}
               </button>
