@@ -10,9 +10,13 @@ import jsQR from "jsqr";
 
 export default function CashierScannerPage() {
   const handleLogout = async () => {
-  await signOut(auth);
-  // El Layout Guard detectará que saliste y forzará la redirección automáticamente
-};  
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error al cerrar sesión", error);
+    }
+  };  
+  
   const params = useParams();
   const businessId = params.businessId as string;
 
@@ -210,8 +214,16 @@ export default function CashierScannerPage() {
           <button onClick={() => window.history.back()} className="absolute left-6 top-6 text-gray-400 hover:text-gray-900">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
+          
           <h1 className="text-xl font-extrabold text-gray-900">Terminal POS</h1>
           <p className="text-sm text-gray-500 mt-1">Identifica al socio VIP</p>
+
+          <button 
+            onClick={handleLogout} 
+            className="absolute right-6 top-6 text-red-600 bg-red-50 hover:bg-red-100 font-extrabold px-4 py-1.5 rounded-xl text-sm border border-red-200 transition-colors shadow-sm"
+          >
+            Salir
+          </button>
         </header>
 
         {!customerData && (
