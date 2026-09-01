@@ -1,28 +1,32 @@
 "use client";
 
 import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase"; // Asegúrate de exportar 'db' desde tu config
 import { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
 import { doc, getDoc, updateDoc, increment } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 import jsQR from "jsqr";
 
+// Interfaz para el tipado estricto de la marca
+interface BrandSettings {
+  primaryColor: string;
+  backgroundUrl: string;
+  logoUrl: string;
+}
+
 export default function CashierScannerPage() {
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error al cerrar sesión", error);
-    }
-  };  
-  
   const params = useParams();
   const businessId = params.businessId as string;
 
+  // Estados de Personalización (White-label)
+  const [brand, setBrand] = useState<BrandSettings>({
+    primaryColor: "#111827", // Negro por defecto
+    backgroundUrl: "",
+    logoUrl: "",
+  });
+
   const [inputMode, setInputMode] = useState<"camera" | "manual">("camera");
   const [manualToken, setManualToken] = useState("");
-  
   const [customerData, setCustomerData] = useState<any>(null);
   const [transactionType, setTransactionType] = useState<"accumulate" | "redeem">("accumulate");
   const [amountInput, setAmountInput] = useState("");
@@ -35,16 +39,37 @@ export default function CashierScannerPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef<number>(0);
 
+  // 1. Cargar configuración visual del negocio
+  useEffect(() => {
+    const fetchBrandSettings = async () => {
+      try {
+        const businessRef = doc(db, "businesses", businessId);
+        const snap = await getDoc(businessRef);
+        if (snap.exists() && snap.data().brandSettings) {
+          setBrand((prev) => ({ ...prev, ...snap.data().brandSettings }));
+        }
+      } catch (error) {
+        console.error("Error cargando personalización visual:", error);
+      }
+    };
+    fetchBrandSettings();
+  }, [businessId]);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error("Error al cerrar sesión", error);
+    }
+  };
+
   const startCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError(true);
       return;
     }
-
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -80,9 +105,7 @@ export default function CashierScannerPage() {
         ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
         const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
         
-        const code = jsQR(imageData.data, imageData.width, imageData.height, {
-          inversionAttempts: "dontInvert",
-        });
+        const code = jsQR(imageData.data, imageData.width, imageData.height, { inversionAttempts: "dontInvert" });
 
         if (code && code.data) {
           stopCamera(); 
@@ -106,7 +129,6 @@ export default function CashierScannerPage() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setLoading(true);
     setMessage("Analizando foto...");
     stopCamera();
@@ -164,7 +186,6 @@ export default function CashierScannerPage() {
   const handleTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customerData || !amountInput) return;
-
     setLoading(true);
     setMessage("");
 
@@ -197,25 +218,28 @@ export default function CashierScannerPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes scanLaser {
-          0% { top: 0px; opacity: 0; }
-          10% { opacity: 1; }
-          90% { opacity: 1; }
-          100% { top: 100%; opacity: 0; }
-        }
-        .animate-laser { animation: scanLaser 2.5s linear infinite; }
-      `}} />
+    <div 
+      className="min-h-screen py-8 px-4 relative bg-cover bg-center bg-fixed"
+      style={{ 
+        backgroundImage: brand.backgroundUrl ? `url(${brand.backgroundUrl})` : 'none',
+        backgroundColor: brand.backgroundUrl ? 'transparent' : '#f9fafb' 
+      }}
+    >
+      {/* Capa de oscurecimiento si hay fondo, para mantener legibilidad */}
+      {brand.backgroundUrl && <div className="absolute inset-0 bg-black/40 backdrop-blur-sm z-0"></div>}
 
-      <div className="max-w-md mx-auto space-y-6">
+      <div className="max-w-md mx-auto space-y-6 relative z-10">
         
-        <header className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 text-center relative">
+        <header className="bg-white/95 p-6 rounded-2xl shadow-xl border border-gray-100 text-center relative backdrop-blur-md">
           <button onClick={() => window.history.back()} className="absolute left-6 top-6 text-gray-400 hover:text-gray-900">
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
           </button>
           
-          <h1 className="text-xl font-extrabold text-gray-900">Terminal POS</h1>
+          {brand.logoUrl ? (
+            <img src={brand.logoUrl} alt="Logo" className="h-10 mx-auto mb-2 object-contain" />
+          ) : (
+            <h1 className="text-xl font-extrabold text-gray-900">Terminal POS</h1>
+          )}
           <p className="text-sm text-gray-500 mt-1">Identifica al socio VIP</p>
 
           <button 
@@ -227,17 +251,28 @@ export default function CashierScannerPage() {
         </header>
 
         {!customerData && (
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-2 flex gap-2">
-            <button onClick={() => setInputMode("camera")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors ${inputMode === 'camera' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>Escáner</button>
-            <button onClick={() => setInputMode("manual")} className={`flex-1 py-2 text-sm font-bold rounded-xl transition-colors ${inputMode === 'manual' ? 'bg-gray-900 text-white' : 'text-gray-500 hover:bg-gray-50'}`}>Manual</button>
+          <div className="bg-white/95 rounded-2xl shadow-xl border border-gray-100 p-2 flex gap-2 backdrop-blur-md">
+            <button 
+              onClick={() => setInputMode("camera")} 
+              className="flex-1 py-2 text-sm font-bold rounded-xl transition-colors text-white shadow-md"
+              style={{ backgroundColor: inputMode === 'camera' ? brand.primaryColor : '#9ca3af' }}
+            >
+              Escáner
+            </button>
+            <button 
+              onClick={() => setInputMode("manual")} 
+              className="flex-1 py-2 text-sm font-bold rounded-xl transition-colors text-white shadow-md"
+              style={{ backgroundColor: inputMode === 'manual' ? brand.primaryColor : '#9ca3af' }}
+            >
+              Manual
+            </button>
           </div>
         )}
 
         {!customerData && (
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+          <div className="bg-white/95 p-4 rounded-2xl shadow-xl border border-gray-100 backdrop-blur-md">
             {inputMode === "camera" ? (
               <div className="space-y-4">
-                
                 {cameraError ? (
                   <div className="bg-yellow-50 text-yellow-800 p-4 rounded-xl text-sm font-semibold text-center border border-yellow-200">
                     La cámara en vivo está bloqueada. Usa el botón de abajo para tomar una foto.
@@ -246,23 +281,15 @@ export default function CashierScannerPage() {
                   <div className="relative w-full h-[300px] bg-black rounded-2xl overflow-hidden shadow-inner">
                     <video ref={videoRef} className="absolute inset-0 w-full h-full object-cover" playsInline muted />
                     <canvas ref={canvasRef} className="hidden" />
-                    
-                    <div className="absolute inset-0 z-10 pointer-events-none flex items-center justify-center">
-                      <div className="relative w-[220px] h-[220px]">
-                        <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-blue-500 rounded-tl-xl"></div>
-                        <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-blue-500 rounded-tr-xl"></div>
-                        <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-blue-500 rounded-bl-xl"></div>
-                        <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-blue-500 rounded-br-xl"></div>
-                        <div className="absolute left-0 right-0 h-[2px] bg-blue-500 shadow-[0_0_15px_rgba(59,130,246,1)] animate-laser"></div>
-                      </div>
-                    </div>
                   </div>
                 )}
                 
                 <div className="relative mt-4">
                   <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
-                  <div className="w-full bg-blue-600 text-white font-bold py-4 rounded-xl text-center shadow-md hover:bg-blue-700 flex items-center justify-center gap-2">
-                    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                  <div 
+                    className="w-full text-white font-bold py-4 rounded-xl text-center shadow-md flex items-center justify-center gap-2"
+                    style={{ backgroundColor: brand.primaryColor }}
+                  >
                     Escanear Foto / Activar Cámara
                   </div>
                 </div>
@@ -271,7 +298,9 @@ export default function CashierScannerPage() {
               <form onSubmit={handleManualSearch} className="p-2 space-y-4">
                 <label className="block text-sm font-bold text-gray-700">Token ID del Cliente</label>
                 <input type="text" required value={manualToken} onChange={(e) => setManualToken(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none" />
-                <button type="submit" disabled={loading} className="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700">Verificar Socio</button>
+                <button type="submit" disabled={loading} className="w-full text-white font-bold py-3 rounded-xl shadow-md" style={{ backgroundColor: brand.primaryColor }}>
+                  Verificar Socio
+                </button>
               </form>
             )}
             {message && <div className="mt-4 p-3 bg-gray-100 text-gray-800 rounded-xl text-sm font-semibold text-center border">{message}</div>}
@@ -279,7 +308,7 @@ export default function CashierScannerPage() {
         )}
 
         {customerData && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 space-y-4">
+          <div className="bg-white/95 p-6 rounded-2xl shadow-xl border border-gray-100 space-y-4 backdrop-blur-md">
             <div className="border-b pb-4 flex justify-between items-start">
               <div>
                 <h2 className="font-bold text-gray-900 text-xl">{customerData.name}</h2>
@@ -305,9 +334,7 @@ export default function CashierScannerPage() {
               
               <div>
                 <input 
-                  type="number" 
-                  required 
-                  min="1" 
+                  type="number" required min="1" 
                   value={amountInput} 
                   onChange={(e) => setAmountInput(e.target.value)} 
                   placeholder={transactionType === 'accumulate' ? 'Monto pagado ($)' : 'Puntos a restar'} 
@@ -316,9 +343,9 @@ export default function CashierScannerPage() {
               </div>
               
               <button 
-                type="submit" 
-                disabled={loading} 
-                className="w-full bg-gray-900 text-white font-extrabold py-4 rounded-xl text-base hover:bg-gray-800 shadow-lg"
+                type="submit" disabled={loading} 
+                className="w-full text-white font-extrabold py-4 rounded-xl text-base shadow-lg"
+                style={{ backgroundColor: brand.primaryColor }}
               >
                 {loading ? "Procesando..." : "Confirmar Operación"}
               </button>
