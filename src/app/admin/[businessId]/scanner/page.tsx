@@ -25,6 +25,7 @@ export default function CashierScannerPage() {
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef<number>(0);
 
+  // MOTOR 1: CÁMARA CON FALLBACK INTELIGENTE
   const startCamera = async () => {
     if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       setCameraError(true);
@@ -32,9 +33,19 @@ export default function CashierScannerPage() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ 
-        video: { facingMode: "environment" } 
-      });
+      let stream;
+      try {
+        // Intento 1: Forzar cámara trasera (Ideal para Celulares)
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: { exact: "environment" } } 
+        });
+      } catch (e) {
+        // Intento 2 (Fallback): Si no hay cámara trasera o es PC, usar cualquier cámara disponible
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: true 
+        });
+      }
+      
       streamRef.current = stream;
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
@@ -45,7 +56,8 @@ export default function CashierScannerPage() {
       }
       setCameraError(false);
     } catch (err) {
-      console.error("Error de cámara:", err);
+      console.error("Error de hardware de cámara:", err);
+      // El NotReadableError cae aquí si otra app está usando la cámara
       setCameraError(true);
     }
   };
@@ -93,12 +105,13 @@ export default function CashierScannerPage() {
     return () => stopCamera();
   }, [inputMode, customerData]);
 
+  // MOTOR 2: LECTOR DE FOTOS CON COMPRESIÓN PARA MÓVILES
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setLoading(true);
-    setMessage("Analizando foto...");
+    setMessage("Procesando imagen (optimizando para móvil)...");
     stopCamera();
 
     const reader = new FileReader();
@@ -106,18 +119,30 @@ export default function CashierScannerPage() {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement("canvas");
-        canvas.width = img.width;
-        canvas.height = img.height;
+        
+        // Algoritmo de reducción: Si la foto es gigante, la bajamos a 800px max
+        const MAX_WIDTH = 800;
+        let scale = 1;
+        if (img.width > MAX_WIDTH) {
+          scale = MAX_WIDTH / img.width;
+        }
+        
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        
         const ctx = canvas.getContext("2d");
         if (ctx) {
-          ctx.drawImage(img, 0, 0, img.width, img.height);
-          const imageData = ctx.getImageData(0, 0, img.width, img.height);
+          // Dibujamos la imagen ya comprimida
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+          
+          // jsQR ahora procesa una imagen ligera
           const code = jsQR(imageData.data, imageData.width, imageData.height);
           
           if (code && code.data) {
             fetchCustomer(code.data);
           } else {
-            setMessage("No se detectó QR. Asegúrate de que se vea claro.");
+            setMessage("No se detectó QR. Intenta enfocarlo mejor.");
             setLoading(false);
           }
         }
@@ -127,6 +152,7 @@ export default function CashierScannerPage() {
     reader.readAsDataURL(file);
   };
 
+  // ... (El resto de la lógica de Firebase se mantiene intacta) ...
   const fetchCustomer = async (customerId: string) => {
     setLoading(true);
     setMessage("");
@@ -188,7 +214,6 @@ export default function CashierScannerPage() {
 
   return (
     <div className="min-h-screen bg-gray-100 py-6 px-4">
-      {/* Estilos inyectados: Animación láser y forzado de contraste anti-transparencias */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes scanLaser {
           0% { top: 0px; opacity: 0; }
@@ -197,11 +222,7 @@ export default function CashierScannerPage() {
           100% { top: 100%; opacity: 0; }
         }
         .animate-laser { animation: scanLaser 2.5s linear infinite; }
-        
-        /* Forzamos visibilidad total en cualquier texto residual */
-        span, p, label {
-          color: #111827 !important;
-        }
+        span, p, label { color: #111827 !important; }
       `}} />
 
       <div className="max-w-md mx-auto space-y-6">
@@ -228,7 +249,7 @@ export default function CashierScannerPage() {
                 
                 {cameraError ? (
                   <div className="bg-amber-100 text-amber-900 p-4 rounded-xl text-sm font-extrabold text-center border border-amber-300">
-                    Cámara bloqueada por permisos. Usa el botón de archivo inferior.
+                    Cámara en uso por otra app o sin permisos. Usa el botón de archivo inferior.
                   </div>
                 ) : (
                   <div className="relative w-full h-[320px] bg-black rounded-2xl overflow-hidden shadow-inner">
@@ -247,7 +268,6 @@ export default function CashierScannerPage() {
                   </div>
                 )}
                 
-                {/* Botón de archivo transformado en pastilla de alto contraste */}
                 <div className="relative mt-2">
                   <input type="file" accept="image/*" capture="environment" onChange={handleImageUpload} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
                   <div className="w-full bg-blue-600 text-white font-extrabold py-4 rounded-xl text-center shadow-lg hover:bg-blue-700 flex items-center justify-center gap-2 text-base">
