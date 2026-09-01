@@ -17,3 +17,4 @@ const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
 // Exportamos la instancia de la base de datos
 export const db = getFirestore(app);
+export const auth = getAuth(app);
