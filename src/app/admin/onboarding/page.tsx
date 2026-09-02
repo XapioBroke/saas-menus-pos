@@ -14,14 +14,21 @@ export default function OnboardingPage() {
   const [businessType, setBusinessType] = useState("gastronomia");
   const [primaryColor, setPrimaryColor] = useState("#2563eb");
   const [logoFile, setLogoFile] = useState<File | null>(null);
+  const [bgFile, setBgFile] = useState<File | null>(null); // Estado para el fondo
   const [aiPrompt, setAiPrompt] = useState("");
   
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setLogoFile(e.target.files[0]);
+    }
+  };
+
+  const handleBgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setBgFile(e.target.files[0]);
     }
   };
 
@@ -33,16 +40,34 @@ export default function OnboardingPage() {
     }
 
     setLoading(true);
-    setMessage("Configurando ecosistema en la nube...");
+    setMessage("Subiendo archivos y configurando ecosistema en la nube...");
 
     try {
       let logoUrl = "";
+      let backgroundUrl = "";
 
-      // 1. Si el cliente subió un logo, lo guardamos en Firebase Storage
+      // 1. Subida paralela de archivos para optimizar tiempos de respuesta
+      const uploadPromises = [];
+
       if (logoFile) {
-        const storageRef = ref(storage, `logos/${businessId}_${logoFile.name}`);
-        const snapshot = await uploadBytes(storageRef, logoFile);
-        logoUrl = await getDownloadURL(snapshot.ref);
+        const logoRef = ref(storage, `logos/${businessId}_${logoFile.name}`);
+        const logoPromise = uploadBytes(logoRef, logoFile)
+          .then(snap => getDownloadURL(snap.ref))
+          .then(url => { logoUrl = url; });
+        uploadPromises.push(logoPromise);
+      }
+
+      if (bgFile) {
+        const bgRef = ref(storage, `backgrounds/${businessId}_${bgFile.name}`);
+        const bgPromise = uploadBytes(bgRef, bgFile)
+          .then(snap => getDownloadURL(snap.ref))
+          .then(url => { backgroundUrl = url; });
+        uploadPromises.push(bgPromise);
+      }
+
+      // Esperamos a que todas las imágenes terminen de subir simultáneamente
+      if (uploadPromises.length > 0) {
+        await Promise.all(uploadPromises);
       }
 
       // 2. Estructuramos el payload de la Base de Datos
@@ -51,7 +76,8 @@ export default function OnboardingPage() {
         businessType,
         brandSettings: {
           primaryColor,
-          ...(logoUrl && { logoUrl }) // Solo actualiza si hay URL
+          ...(logoUrl && { logoUrl }), // Solo se actualiza si hay un logo nuevo
+          ...(backgroundUrl && { backgroundUrl }) // Solo se actualiza si hay un fondo nuevo
         },
         aiPromptContext: aiPrompt,
         updatedAt: new Date().toISOString(),
@@ -75,7 +101,7 @@ export default function OnboardingPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto space-y-8">
+      <div className="max-w-3xl mx-auto space-y-8">
         
         <header className="text-center space-y-2">
           <h1 className="text-3xl font-black text-gray-900">Configuración de Plataforma</h1>
@@ -119,18 +145,22 @@ export default function OnboardingPage() {
           <section className="space-y-4">
             <h2 className="text-lg font-black text-gray-900 border-b pb-2">2. Diseño y Marca Blanca</h2>
             
-            <div className="flex items-center gap-6">
-              <div className="space-y-2 flex-1">
-                <label className="block text-sm font-bold text-gray-700">Color Corporativo (Botones y Acentos)</label>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-gray-700">Color Primario</label>
                 <div className="flex items-center gap-3">
-                  <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-12 w-12 rounded cursor-pointer border-0 p-0" />
-                  <span className="text-gray-500 font-mono font-bold uppercase">{primaryColor}</span>
+                  <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-12 w-full rounded cursor-pointer border-0 p-0" />
                 </div>
               </div>
               
-              <div className="space-y-2 flex-1">
+              <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">Logotipo Oficial</label>
-                <input type="file" accept="image/*" onChange={handleFileChange} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-bold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer" />
+                <input type="file" accept="image/*" onChange={handleLogoChange} className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-blue-50 file:text-blue-700 cursor-pointer hover:file:bg-blue-100" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-gray-700">Fondo (Opcional)</label>
+                <input type="file" accept="image/*" onChange={handleBgChange} className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-purple-50 file:text-purple-700 cursor-pointer hover:file:bg-purple-100" />
               </div>
             </div>
           </section>
