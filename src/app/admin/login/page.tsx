@@ -22,8 +22,8 @@ export default function AdminLogin() {
       // 1. Firebase verifica las credenciales matemáticamente
       await signInWithEmailAndPassword(auth, email, password);
       
-      // 2. Si es exitoso, abrimos la puerta al panel del negocio
-      router.push(`/admin/${businessId}`);
+      // 2. Redirección Estratégica: Enviamos al usuario al Hub Central (Dashboard)
+      router.push(`/admin/dashboard?businessId=${businessId}`);
     } catch (err: any) {
       console.error(err);
       setError("Acceso denegado. Verifica tus credenciales.");
@@ -55,7 +55,7 @@ export default function AdminLogin() {
               required 
               value={businessId}
               onChange={(e) => setBusinessId(e.target.value)}
-              className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 font-bold focus:outline-none focus:border-black transition-colors"
+              className="w-full bg-gray-50 border-2 border-gray-200 rounded-xl px-4 py-3 text-gray-900 font-bold focus:outline-none focus:border-black transition-colors lowercase"
             />
           </div>
 
@@ -98,7 +98,6 @@ export default function AdminLogin() {
             )}
           </button>
         </form>
-
       </div>
     </div>
   );
