@@ -38,7 +38,7 @@ function DashboardContent() {
           
           {/* Tarjeta 1: Autopista del Cajero */}
           <div 
-            onClick={() => router.push(`/admin/${businessId}`)}
+            onClick={() => router.push(`/admin/${businessId}/scanner`)}
             className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 cursor-pointer hover:-translate-y-2 transition-transform group"
           >
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors">

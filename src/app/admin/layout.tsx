@@ -17,13 +17,20 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       if (user) {
         setIsAuthenticated(true);
         setIsLoading(false);
+        
+        // CORRECCIÓN TIER 1: Prevención de bucles de sesión.
+        // Si ya está autenticado e intenta ver el login (o la raíz vacía), lo enviamos al Dashboard.
+        if (pathname === "/admin/login" || pathname === "/admin") {
+          router.push("/admin/dashboard");
+        }
       } else {
         setIsAuthenticated(false);
-        // Si no hay sesión y NO está en la página de login, lo expulsamos
+        
+        // Si no hay sesión y NO está en la página de login, lo expulsamos al login
         if (pathname !== "/admin/login") {
           router.push("/admin/login");
         } else {
-          // Si ya está en la página de login, lo dejamos renderizar
+          // Si no tiene sesión y está en el login, le permitimos ver el formulario
           setIsLoading(false);
         }
       }
