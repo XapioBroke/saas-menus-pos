@@ -45,7 +45,7 @@ function DashboardContent() {
           
           {/* Tarjeta 1: Autopista del Cajero */}
           <div 
-            onClick={() => router.push(`/admin/${businessId}/scanner`)}
+            onClick={() => router.push(`/admin/onboarding?businessId=${businessId}`)}
             className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 cursor-pointer hover:-translate-y-2 transition-transform group flex flex-col"
           >
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors">
@@ -67,31 +67,38 @@ function DashboardContent() {
             <p className="text-gray-500 font-medium flex-1">Personaliza colores, sube logotipos y ajusta el catálogo y el comportamiento de tu IA.</p>
           </div>
 
-          {/* Tarjeta 3: Portal Público y QR (NUEVO) */}
+          {/* Tarjeta 3: Portal Público y QR */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 flex flex-col items-center text-center">
             <h2 className="text-2xl font-black text-gray-900 mb-2">Portal de Clientes</h2>
             <p className="text-gray-500 font-medium text-sm mb-6">Escanea o descarga este QR para colocarlo en tus mesas.</p>
             
             {publicUrl ? (
-              <div className="bg-white p-4 rounded-2xl shadow-inner border border-gray-100 mb-6">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(publicUrl)}`} 
-                  alt="Código QR del Negocio"
-                  className="w-40 h-40 object-contain"
-                />
-              </div>
+              <>
+                <div className="bg-white p-4 rounded-2xl shadow-inner border border-gray-100 mb-6">
+                  <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(publicUrl)}`} 
+                    alt="Código QR del Negocio"
+                    className="w-40 h-40 object-contain"
+                  />
+                </div>
+                <div className="w-full space-y-3 mt-auto">
+                  <button 
+                    onClick={() => window.open(publicUrl, "_blank")}
+                    className="w-full py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors"
+                  >
+                    Ver Plataforma en Vivo
+                  </button>
+                  <button 
+                    onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(publicUrl)}&margin=20`, "_blank")}
+                    className="w-full py-3 bg-blue-50 text-blue-600 font-bold rounded-xl hover:bg-blue-100 transition-colors border border-blue-200"
+                  >
+                    Descargar QR Alta Resolución
+                  </button>
+                </div>
+              </>
             ) : (
               <div className="w-40 h-40 bg-gray-100 rounded-2xl mb-6 animate-pulse"></div>
             )}
-
-            <div className="w-full space-y-3 mt-auto">
-              <button 
-                onClick={() => window.open(publicUrl, "_blank")}
-                className="w-full py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors"
-              >
-                Ver Plataforma en Vivo
-              </button>
-            </div>
           </div>
 
         </div>
