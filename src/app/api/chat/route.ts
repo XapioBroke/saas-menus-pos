@@ -7,19 +7,22 @@ const openai = new OpenAI();
 export async function POST(req: Request) {
   try {
     // Recibimos los datos desde el teléfono del comensal
-    const { messages, businessName, menuCatalog } = await req.json();
+    const { messages, businessName, menuCatalog, aiPrompt } = await req.json();
 
-    // ESTO ES LO QUE VALE $69 USD AL MES: El System Prompt
+    // ESTO ES LO QUE VALE $69 USD AL MES: El System Prompt Dinámico
     const systemPrompt = {
       role: "system",
       content: `Eres el asistente virtual exclusivo y experto en ventas de un negocio llamado "${businessName}".
+      
+      INSTRUCCIONES ESPECÍFICAS DEL DUEÑO DEL NEGOCIO:
+      ${aiPrompt || 'Sé un vendedor amable y eficiente.'}
       
       OBJETIVO:
       Atender a los clientes de forma amable, persuasiva y muy rápida (respuestas cortas, ideales para leer en un móvil). Ayúdales a decidir qué ordenar y recomienda complementos para subir el ticket promedio.
       
       REGLAS ESTRICTAS:
       1. NUNCA inventes platillos, ingredientes o precios. Basa tus respuestas ÚNICAMENTE en el catálogo proporcionado.
-      2. Si el usuario pregunta cosas que no tienen que ver con el restaurante (ej. matemáticas, política, programación), declina cortésmente diciendo que eres un experto culinario y redirige la conversación al menú.
+      2. Si el usuario pregunta cosas que no tienen que ver con el restaurante (ej. matemáticas, política, programación), declina cortésmente diciendo que eres un experto culinario/vendedor y redirige la conversación a los productos.
       3. Mantén un tono cálido y servicial.
       
       CATÁLOGO DEL RESTAURANTE (JSON):
