@@ -45,7 +45,7 @@ function DashboardContent() {
           
           {/* Tarjeta 1: Autopista del Cajero */}
           <div 
-            onClick={() => router.push(`/admin/onboarding?businessId=${businessId}`)}
+            onClick={() => router.push(`/admin/${businessId}/scanner`)}
             className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 cursor-pointer hover:-translate-y-2 transition-transform group flex flex-col"
           >
             <div className="w-16 h-16 bg-blue-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-blue-600 transition-colors">
@@ -57,7 +57,7 @@ function DashboardContent() {
 
           {/* Tarjeta 2: Autopista del Dueño */}
           <div 
-            onClick={() => router.push(`/admin/onboarding`)}
+            onClick={() => router.push(`/admin/onboarding?businessId=${businessId}`)}
             className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 cursor-pointer hover:-translate-y-2 transition-transform group flex flex-col"
           >
             <div className="w-16 h-16 bg-purple-50 rounded-2xl flex items-center justify-center mb-6 group-hover:bg-purple-600 transition-colors">
