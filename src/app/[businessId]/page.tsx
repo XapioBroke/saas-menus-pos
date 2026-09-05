@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useParams } from "next/navigation";
 
@@ -169,12 +169,36 @@ export default function CustomerPublicPortal() {
   const getCartTotal = () => cart.reduce((total, cartItem) => total + (cartItem.item.price * cartItem.quantity), 0);
   const getCartCount = () => cart.reduce((count, cartItem) => count + cartItem.quantity, 0);
 
-  const handleCheckout = () => {
+  // MOTOR DE CHECKOUT TIER 1 (KDS + WHATSAPP)
+  const handleCheckout = async () => {
     if (!paymentMethod) {
       alert("Por favor selecciona un método de pago.");
       return;
     }
     
+    // 1. INYECCIÓN EN TIEMPO REAL A LA PANTALLA KDS (Firestore)
+    try {
+      const orderRef = doc(collection(db, "businesses", businessId, "orders"));
+      await setDoc(orderRef, {
+        customerName: customerProfile?.name || "Cliente Invitado",
+        customerPhone: customerProfile?.phone || "",
+        items: cart.map(c => ({
+          name: c.item.name,
+          quantity: c.quantity,
+          price: c.item.price
+        })),
+        total: getCartTotal(),
+        status: "nuevo",
+        paymentMethod: paymentMethod,
+        createdAt: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error("Error enviando pedido al KDS:", error);
+      alert("Hubo un problema enviando tu pedido a cocina. Intenta de nuevo.");
+      return;
+    }
+    
+    // 2. NOTIFICACIÓN RESPALDO B2C (WhatsApp)
     let orderText = `*NUEVO PEDIDO - ${businessData.businessName}*%0A%0A`;
     cart.forEach(c => {
       orderText += `${c.quantity}x ${c.item.name} - $${c.item.price * c.quantity}%0A`;
@@ -189,7 +213,6 @@ export default function CustomerPublicPortal() {
       orderText += `%0A*Cliente VIP:* ${customerProfile.name} (Tel: ${customerProfile.phone})`;
     }
 
-    // Ruta de WhatsApp 
     window.open(`https://wa.me/?text=${orderText}`, '_blank');
     setCart([]);
     setIsCartOpen(false);
