@@ -241,7 +241,15 @@ function OnboardingContent() {
                         <div className="flex-1 space-y-3">
                           <div className="flex gap-3">
                             <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="text-gray-900 placeholder-gray-400" />
-                            <input type="number" value={item.price} onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)} placeholder="$ Precio" className="text-gray-900 placeholder-gray-400" />
+                            <input
+  type="number"
+  value={item.price}
+  onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)}
+  placeholder="$ Precio"
+  
+  // >>> FRAGMENTO DE CLASES TIER 1 RESTAURADO <<<
+  className="w-28 bg-green-50 border border-green-100 rounded-full px-6 py-2.5 text-center text-lg font-black font-sans text-green-700 tracking-tight placeholder:text-green-200 focus:ring-1 focus:ring-green-400 focus:border-green-400 outline-none transition-all shadow-inner-sm"
+/>
                           </div>
                           <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400" />
                         </div>
