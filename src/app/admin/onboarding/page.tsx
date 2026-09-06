@@ -1,271 +1,219 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { doc, setDoc, getDoc } from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import { db, storage } from "@/lib/firebase";
+import { useState, useEffect } from "react";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const generateId = () => Math.random().toString(36).substr(2, 9);
-
-// Galería Extendida Tier 1
-const PRESET_BACKGROUNDS = [
-  { id: "tech1", label: "Malla Cyber", url: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1000&auto=format&fit=crop" },
-  { id: "tech2", label: "Circuitos", url: "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop" },
-  { id: "food1", label: "Madera Rústica", url: "https://images.unsplash.com/photo-1550547660-d9450f859349?q=80&w=1000&auto=format&fit=crop" },
-  { id: "food2", label: "Mármol Oscuro", url: "https://images.unsplash.com/photo-1616651181620-9906d6e43fc3?q=80&w=1000&auto=format&fit=crop" },
-  { id: "market", label: "Abarrotes / Fresco", url: "https://images.unsplash.com/photo-1542838132-92c53300491e?q=80&w=1000&auto=format&fit=crop" },
-  { id: "retail", label: "Boutique Minimal", url: "https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=1000&auto=format&fit=crop" },
-  { id: "abs1", label: "Ondas Premium", url: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=1000&auto=format&fit=crop" },
-  { id: "abs2", label: "Acero Pulido", url: "https://images.unsplash.com/photo-1507722650058-005fa97f5466?q=80&w=1000&auto=format&fit=crop" }
-];
-
-function OnboardingContent() {
+export default function OnboardingPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const editBusinessId = searchParams.get("businessId");
-  
+  const businessId = searchParams.get("businessId") || "";
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  // Estados de Configuración General
   const [businessName, setBusinessName] = useState("");
-  const [businessId, setBusinessId] = useState("");
-  const [businessType, setBusinessType] = useState("gastronomia");
-  const [primaryColor, setPrimaryColor] = useState("#2563eb");
-  const [logoFile, setLogoFile] = useState<File | null>(null);
-  
-  const [presetBg, setPresetBg] = useState("");
-  const [bgFile, setBgFile] = useState<File | null>(null);
-  
-  const [aiPrompt, setAiPrompt] = useState("");
-  const [catalog, setCatalog] = useState([
-    { categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true }] }
-  ]);
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+  const [businessType, setBusinessType] = useState("restaurant");
+  const [primaryColor, setPrimaryColor] = useState("#3b82f6");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [backgroundUrl, setBackgroundUrl] = useState("");
+  const [aiPromptContext, setAiPromptContext] = useState("");
+
+  // ESTADOS NUEVOS: CONTROL DE VENTAS Y PAGOS
+  const [enableOnlineOrders, setEnableOnlineOrders] = useState(true);
+  const [mpAccessToken, setMpAccessToken] = useState("");
 
   useEffect(() => {
-    if (editBusinessId) {
-      setLoading(true);
-      setBusinessId(editBusinessId);
-      const fetchData = async () => {
-        try {
-          const businessSnap = await getDoc(doc(db, "businesses", editBusinessId));
-          const menuSnap = await getDoc(doc(db, "menus", editBusinessId));
+    if (!businessId) return;
+    const fetchData = async () => {
+      try {
+        const docRef = doc(db, "businesses", businessId);
+        const snap = await getDoc(docRef);
+        if (snap.exists()) {
+          const data = snap.data();
+          setBusinessName(data.businessName || "");
+          setBusinessType(data.businessType || "restaurant");
+          setPrimaryColor(data.brandSettings?.primaryColor || "#3b82f6");
+          setLogoUrl(data.brandSettings?.logoUrl || "");
+          setBackgroundUrl(data.brandSettings?.backgroundUrl || "");
+          setAiPromptContext(data.aiPromptContext || "");
           
-          if (businessSnap.exists()) {
-            const data = businessSnap.data();
-            setBusinessName(data.businessName || "");
-            setBusinessType(data.businessType || "gastronomia");
-            setPrimaryColor(data.brandSettings?.primaryColor || "#2563eb");
-            setAiPrompt(data.aiPromptContext || "");
-            
-            const existingBgUrl = data.brandSettings?.backgroundUrl;
-            if (existingBgUrl) {
-              const isPreset = PRESET_BACKGROUNDS.find(p => p.url === existingBgUrl);
-              setPresetBg(existingBgUrl);
-            }
-          }
-          if (menuSnap.exists()) {
-            const menuData = menuSnap.data();
-            if (menuData.catalog && menuData.catalog.length > 0) {
-              setCatalog(menuData.catalog.map((cat: any) => ({
-                categoryId: generateId(), categoryName: cat.category,
-                items: cat.items.map((item: any) => ({ ...item, id: item.id || generateId() }))
-              })));
-            }
-          }
-        } catch (error) {
-          console.error("Error cargando datos:", error);
-        } finally {
-          setLoading(false);
+          // Carga de los nuevos campos (Si no existen, toman su valor por defecto)
+          setEnableOnlineOrders(data.enableOnlineOrders !== false); 
+          setMpAccessToken(data.mpAccessToken || "");
         }
-      };
-      fetchData();
-    }
-  }, [editBusinessId]);
-
-  const handleIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const formatted = e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-    setBusinessId(formatted);
-  };
-
-  const handleLogoChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) setLogoFile(e.target.files[0]);
-  };
-  const handleBgChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setBgFile(e.target.files[0]);
-      setPresetBg(""); 
-    }
-  };
-
-  const addCategory = () => setCatalog([...catalog, { categoryId: generateId(), categoryName: "", items: [] }]);
-  const removeCategory = (index: number) => { const n = [...catalog]; n.splice(index, 1); setCatalog(n); };
-  const updateCategoryName = (txt: string, i: number) => { const n = [...catalog]; n[i].categoryName = txt; setCatalog(n); };
-  const addItem = (i: number) => { const n = [...catalog]; n[i].items.push({ id: generateId(), name: "", price: "", description: "", available: true }); setCatalog(n); };
-  const removeItem = (cIdx: number, iIdx: number) => { const n = [...catalog]; n[cIdx].items.splice(iIdx, 1); setCatalog(n); };
-  const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const n = [...catalog]; n[cIdx].items[iIdx] = { ...n[cIdx].items[iIdx], [field]: val }; setCatalog(n); };
+      } catch (error) {
+        console.error("Error cargando datos:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, [businessId]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!businessId.trim() || !businessName.trim()) {
-      setMessage("Error: Nombre e ID son obligatorios.");
-      return;
-    }
-    setLoading(true);
-    setMessage("Estructurando plataforma...");
-
+    setSaving(true);
     try {
-      let logoUrl = "";
-      let backgroundUrl = presetBg; 
-      const uploadPromises = [];
+      const docRef = doc(db, "businesses", businessId);
+      await setDoc(docRef, {
+        businessName,
+        businessType,
+        aiPromptContext,
+        enableOnlineOrders, // Se guarda el modo del catálogo
+        mpAccessToken,      // Se guarda la llave bancaria del cliente
+        brandSettings: {
+          primaryColor,
+          logoUrl,
+          backgroundUrl
+        },
+        updatedAt: new Date().toISOString()
+      }, { merge: true });
       
-      if (logoFile) {
-        const logoRef = ref(storage, `logos/${businessId}_${logoFile.name}`);
-        uploadPromises.push(uploadBytes(logoRef, logoFile).then(s => getDownloadURL(s.ref)).then(url => { logoUrl = url; }));
-      }
-      if (bgFile) {
-        const bgRef = ref(storage, `backgrounds/${businessId}_${bgFile.name}`);
-        uploadPromises.push(uploadBytes(bgRef, bgFile).then(s => getDownloadURL(s.ref)).then(url => { backgroundUrl = url; }));
-      }
-      if (uploadPromises.length > 0) await Promise.all(uploadPromises);
-
-      const payload = {
-        businessName, businessType,
-        brandSettings: { primaryColor, ...(logoUrl && { logoUrl }), ...(backgroundUrl && { backgroundUrl }) },
-        aiPromptContext: aiPrompt, updatedAt: new Date().toISOString(),
-      };
-      await setDoc(doc(db, "businesses", businessId), payload, { merge: true });
-
-      const cleanCatalog = catalog.map(sec => ({
-        category: sec.categoryName || "Sin Categoría",
-        items: sec.items.map(item => ({ ...item, price: Number(item.price) || 0 }))
-      }));
-      await setDoc(doc(db, "menus", businessId), { catalog: cleanCatalog }, { merge: true });
-
-      setMessage("¡Ecosistema en línea!");
-      setTimeout(() => router.push(`/admin/dashboard?businessId=${businessId}`), 2000);
+      alert("¡Configuración guardada con éxito!");
+      router.push(`/admin/dashboard?businessId=${businessId}`);
     } catch (error) {
-      console.error(error);
-      setMessage("Error al guardar.");
+      console.error("Error guardando:", error);
+      alert("Hubo un error al guardar los cambios.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-bold text-gray-500">Cargando panel de diseño...</div>;
+
   return (
-    <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        <header className="text-center space-y-2 mb-8">
-          <h1 className="text-3xl font-black text-gray-900">{editBusinessId ? "Editar Plataforma" : "Configuración SaaS"}</h1>
-          <p className="text-gray-500 font-medium">Diseña tu marca, el catálogo y las reglas de tu asistente virtual.</p>
+    <div className="min-h-screen bg-gray-50 py-12 px-4 font-sans">
+      <div className="max-w-3xl mx-auto">
+        
+        <header className="mb-10 text-center relative">
+          <button onClick={() => router.push(`/admin/dashboard?businessId=${businessId}`)} className="absolute left-0 top-2 text-sm font-bold text-gray-500 hover:text-black transition-colors">
+            &larr; Volver
+          </button>
+          <h1 className="text-3xl font-black text-gray-900 tracking-tight">Diseño y Configuración</h1>
+          <p className="text-gray-500 font-medium mt-2">Personaliza la experiencia de tus clientes.</p>
         </header>
 
         <form onSubmit={handleSave} className="space-y-8">
-          {message && <div className={`p-4 rounded-xl text-sm font-bold text-center ${message.includes("Error") ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"} border`}>{message}</div>}
-
-          {/* IDENTIDAD */}
-          <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6">
-            <h2 className="text-xl font-black text-gray-900 border-b pb-2">1. Identidad Corporativa</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">Nombre del Negocio</label>
-                <input type="text" required value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium" />
+          
+          {/* SECCIÓN 1: IDENTIDAD VISUAL */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">🎨</span>
+              Identidad de Marca
+            </h2>
+            
+            <div className="space-y-5">
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Nombre del Negocio</label>
+                <input type="text" required value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-purple-500 outline-none" />
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">ID Único (URL)</label>
-                <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50" />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">Giro Comercial (Cambia el diseño final)</label>
-                <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium">
-                  <option value="gastronomia">Alimentos / Menú Vertical</option>
-                  <option value="retail">Tienda / Catálogo en Cuadrícula</option>
-                </select>
-              </div>
-              <div className="space-y-2 flex gap-4">
-                <div className="flex-1">
-                  <label className="block text-sm font-bold text-gray-700">Logotipo</label>
-                  <input type="file" accept="image/*" onChange={handleLogoChange} className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-blue-50 file:text-blue-700" />
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Tipo de Negocio</label>
+                  <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-purple-500 outline-none">
+                    <option value="restaurant">Restaurante / Comida</option>
+                    <option value="retail">Tienda / Retail</option>
+                  </select>
                 </div>
-                <div className="w-24">
-                  <label className="block text-sm font-bold text-gray-700 text-center">Color</label>
-                  <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-full rounded cursor-pointer border-0 p-0" />
-                </div>
-              </div>
-            </div>
-
-            {/* FONDOS PREMIUM SCROLLABLES */}
-            <div className="space-y-4 pt-4">
-              <label className="block text-sm font-bold text-gray-700">Fondo de Pantalla Premium</label>
-              <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar">
-                {PRESET_BACKGROUNDS.map(bg => (
-                  <div 
-                    key={bg.id} 
-                    onClick={() => { setPresetBg(bg.url); setBgFile(null); }}
-                    className={`shrink-0 w-40 h-28 rounded-xl cursor-pointer bg-cover bg-center border-4 flex items-end p-2 transition-transform hover:scale-105 snap-center ${presetBg === bg.url ? 'border-blue-600 shadow-lg' : 'border-transparent shadow-sm'}`}
-                    style={{ backgroundImage: `url(${bg.url})` }}
-                  >
-                    <span className="text-[10px] text-white font-black bg-black/70 px-2 py-1 rounded backdrop-blur-sm w-full text-center truncate">{bg.label}</span>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Color Principal</label>
+                  <div className="flex gap-3 items-center">
+                    <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="w-12 h-12 rounded-xl cursor-pointer border-0 p-0" />
+                    <input type="text" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold uppercase" />
                   </div>
-                ))}
+                </div>
               </div>
-              <div className="flex items-center gap-4 mt-2">
-                <span className="text-xs font-bold text-gray-400 uppercase">O sube tu imagen:</span>
-                <input type="file" accept="image/*" onChange={handleBgChange} className="flex-1 text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-purple-50 file:text-purple-700" />
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">URL del Logotipo (Opcional)</label>
+                <input type="url" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} placeholder="https://ejemplo.com/logo.png" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-purple-500 outline-none text-sm" />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">URL de Fondo de Pantalla (Opcional)</label>
+                <input type="url" value={backgroundUrl} onChange={(e) => setBackgroundUrl(e.target.value)} placeholder="https://ejemplo.com/fondo.jpg" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-purple-500 outline-none text-sm" />
               </div>
             </div>
           </div>
 
-          {/* IA */}
-          <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-4">
-            <h2 className="text-xl font-black text-gray-900 border-b pb-2">2. Inteligencia Artificial</h2>
-            <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium resize-none" />
-          </div>
-
-          {/* CATÁLOGO */}
-          <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6">
-            <h2 className="text-xl font-black text-gray-900 border-b pb-2">3. Constructor de Catálogo</h2>
+          {/* SECCIÓN 2: OPERACIÓN Y VENTAS (NUEVO) */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">🛒</span>
+              Operación y Ventas
+            </h2>
+            
             <div className="space-y-6">
-              {catalog.map((cat, catIndex) => (
-                <div key={cat.categoryId} className="p-6 bg-gray-50 border border-gray-200 rounded-2xl relative">
-                  <button type="button" onClick={() => removeCategory(catIndex)} className="absolute top-4 right-4 text-red-500 text-sm font-black bg-red-50 px-3 py-1 rounded-lg">X Eliminar</button>
-                  <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas, Celulares)" className="mb-4 w-full md:w-1/2 bg-white border border-gray-300 rounded-xl px-4 py-2 font-black" />
-                  
-                  <div className="space-y-3">
-                    {cat.items.map((item, itemIndex) => (
-                      <div key={item.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-gray-100">
-                        <div className="flex-1 space-y-3">
-                          <div className="flex gap-3">
-                            <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" />
-                            <input type="number" value={item.price} onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)} placeholder="$ Precio" className="w-24 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-green-600" />
-                          </div>
-                          <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600" />
-                        </div>
-                        <button type="button" onClick={() => removeItem(catIndex, itemIndex)} className="text-gray-300 hover:text-red-500 p-2 shrink-0 self-start md:self-center">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                  <button type="button" onClick={() => addItem(catIndex)} className="mt-4 text-blue-600 text-sm font-black">+ Producto</button>
+              
+              {/* Toggle de Modo Catálogo vs Modo Ecommerce */}
+              <label className="flex items-start gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-colors border-gray-100 hover:border-gray-200 bg-gray-50">
+                <div className="mt-1">
+                  <input type="checkbox" checked={enableOnlineOrders} onChange={(e) => setEnableOnlineOrders(e.target.checked)} className="w-5 h-5 rounded text-blue-600 focus:ring-blue-500 cursor-pointer" />
                 </div>
-              ))}
-              <button type="button" onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-500 font-black hover:text-blue-600 hover:bg-blue-50">+ Nueva Categoría</button>
+                <div>
+                  <p className="font-black text-gray-900">Habilitar Carrito de Compras</p>
+                  <p className="text-sm text-gray-500 font-medium leading-snug mt-1">
+                    Si desactivas esta opción, tu plataforma funcionará en <strong>Modo "Solo Vista"</strong>. Los clientes podrán ver tu menú/catálogo y chatear con la IA, pero no podrán agregar productos ni hacer pedidos.
+                  </p>
+                </div>
+              </label>
+
+              {/* Integración de Mercado Pago (Solo visible si el carrito está activo) */}
+              <div className={`transition-opacity duration-300 ${enableOnlineOrders ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
+                <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Access Token de Mercado Pago (Opcional)</label>
+                <input 
+                  type="password" 
+                  value={mpAccessToken} 
+                  onChange={(e) => setMpAccessToken(e.target.value)} 
+                  placeholder="APP_USR-..." 
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-blue-500 outline-none font-mono text-sm" 
+                />
+                <p className="text-xs text-gray-400 font-medium mt-2">
+                  Pega aquí tu llave de producción para que el dinero de los clientes vaya <strong>directo a tu cuenta bancaria</strong>. Si lo dejas vacío, solo podrás cobrar en Efectivo o Terminal Física.
+                </p>
+              </div>
+
             </div>
           </div>
 
-          <button type="submit" disabled={loading} className="w-full bg-black text-white font-black py-5 rounded-2xl text-xl hover:bg-gray-800 shadow-2xl disabled:opacity-50">
-            {loading ? "Estructurando..." : "Guardar y Desplegar Ecosistema"}
-          </button>
+          {/* SECCIÓN 3: INTELIGENCIA ARTIFICIAL */}
+          <div className="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+            <h2 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2">
+              <span className="w-8 h-8 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center">🤖</span>
+              Comportamiento del Asistente IA
+            </h2>
+            
+            <div>
+              <label className="text-xs font-bold text-gray-500 mb-1 block uppercase tracking-wider">Instrucciones Especiales para el Chatbot</label>
+              <textarea 
+                rows={4} 
+                value={aiPromptContext} 
+                onChange={(e) => setAiPromptContext(e.target.value)} 
+                placeholder="Ej. Saluda diciendo '¡Qué onda!'. Recomienda siempre probar la salsa de la casa. Menciona que cerramos a las 10 PM."
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-blue-500 outline-none text-sm resize-none" 
+              />
+              <p className="text-xs text-gray-400 font-medium mt-2">
+                La IA ya conoce tu menú y precios automáticamente. Usa este espacio solo para darle "personalidad" o reglas extra.
+              </p>
+            </div>
+          </div>
+
+          <div className="pt-4 pb-12">
+            <button 
+              type="submit" 
+              disabled={saving}
+              className="w-full py-4 bg-gray-900 text-white font-black text-lg rounded-xl shadow-2xl hover:bg-black transition-all disabled:opacity-50"
+            >
+              {saving ? "Guardando Plataforma..." : "Guardar Configuración"}
+            </button>
+          </div>
+
         </form>
       </div>
     </div>
-  );
-}
-
-export default function OnboardingPage() {
-  return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold text-gray-500">Cargando constructor...</div>}>
-      <OnboardingContent />
-    </Suspense>
   );
 }

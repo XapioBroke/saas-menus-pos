@@ -1,14 +1,28 @@
 import { NextResponse } from 'next/server';
+import { doc, getDoc } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 
 export async function POST(req: Request) {
   try {
-    const { items, businessName } = await req.json();
+    const { items, businessName, businessId } = await req.json();
 
-    if (!process.env.MERCADOPAGO_ACCESS_TOKEN) {
-      return NextResponse.json({ error: "Token de MP no configurado" }, { status: 500 });
+    // 1. Buscar la configuración del restaurante en Firestore
+    const businessRef = doc(db, "businesses", businessId);
+    const businessSnap = await getDoc(businessRef);
+    
+    if (!businessSnap.exists()) {
+      return NextResponse.json({ error: "Negocio no encontrado" }, { status: 404 });
     }
 
-    // Estructuramos el carrito para Mercado Pago
+    const businessData = businessSnap.data();
+    const ownerToken = businessData.mpAccessToken;
+
+    // 2. Si el dueño no ha puesto su llave, abortamos la creación del link en línea
+    if (!ownerToken) {
+      return NextResponse.json({ error: "El negocio no tiene configurado Mercado Pago" }, { status: 400 });
+    }
+
+    // 3. Estructuramos el pedido
     const payload = {
       items: items.map((item: any) => ({
         title: `${item.name} (${businessName})`,
@@ -19,17 +33,17 @@ export async function POST(req: Request) {
       purpose: 'wallet_purchase',
       auto_return: "approved",
       back_urls: {
-        success: "https://miterminal.com",
-        pending: "https://miterminal.com",
-        failure: "https://miterminal.com"
+        success: `https://miterminal.com/${businessId}`,
+        pending: `https://miterminal.com/${businessId}`,
+        failure: `https://miterminal.com/${businessId}`
       }
     };
 
-    // Petición a la API de Preferencias (Checkouts) de Mercado Pago
+    // 4. Disparamos a Mercado Pago USANDO LA LLAVE DEL DUEÑO DEL LOCAL
     const response = await fetch("https://api.mercadopago.com/checkout/preferences", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${process.env.MERCADOPAGO_ACCESS_TOKEN}`,
+        "Authorization": `Bearer ${ownerToken}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
