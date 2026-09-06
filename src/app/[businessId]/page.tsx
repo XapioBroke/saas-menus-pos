@@ -449,7 +449,13 @@ export default function CustomerPublicPortal() {
                     <p className="text-gray-500 text-sm font-medium mt-1">Acumula puntos y gana recompensas reales.</p>
                   </div>
                   <div className="space-y-4">
-                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">Tu Nombre</label><input type="text" required value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Ej. Juan Pérez" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+                    <div><label className="text-xs font-bold text-gray-500 mb-1 block">Tu Nombre</label><input 
+  type="text" 
+  value={inputMessage} 
+  onChange={(e) => setInputMessage(e.target.value)} 
+  placeholder="Escribe tu mensaje..." 
+  className="flex-1 bg-gray-100 border-transparent focus:border-transparent focus:ring-0 rounded-full px-5 py-3 text-sm font-bold outline-none text-gray-900 placeholder-gray-500" 
+ /></div>
                     <div><label className="text-xs font-bold text-gray-500 mb-1 block">Número de Teléfono (Será tu ID)</label><input type="tel" required value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="10 dígitos" className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
                   </div>
                   <button type="submit" disabled={isRegistering} className="w-full py-4 rounded-xl text-white font-black shadow-lg hover:-translate-y-1 transition-transform disabled:opacity-50" style={{ backgroundColor: primaryColor }}>{isRegistering ? "Generando Billetera..." : "Crear Mi Billetera VIP"}</button>

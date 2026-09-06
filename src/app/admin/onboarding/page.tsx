@@ -176,7 +176,11 @@ function OnboardingContent() {
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">Giro Comercial (Cambia el diseño final)</label>
-                <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className="v">
+                <select 
+  value={businessType} 
+  onChange={(e) => setBusinessType(e.target.value)} 
+  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-bold focus:ring-2 focus:ring-purple-500 outline-none text-gray-900"
+>
                   <option value="gastronomia">Alimentos / Menú Vertical</option>
                   <option value="retail">Tienda / Catálogo en Cuadrícula</option>
                 </select>
@@ -218,7 +222,8 @@ function OnboardingContent() {
           {/* IA */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-4">
             <h2 className="text-xl font-black text-gray-900 border-b pb-2">2. Inteligencia Artificial</h2>
-            <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium resize-none" />
+            <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none text-gray-900 placeholder-gray-400" 
+/>
           </div>
 
           {/* CATÁLOGO */}

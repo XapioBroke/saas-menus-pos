@@ -145,7 +145,7 @@ function RewardsContent() {
                       value={reward.name} 
                       onChange={(e) => updateReward(idx, 'name', e.target.value)}
                       placeholder="Nombre de la recompensa..." 
-                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-bold focus:outline-none" 
+                      className="text-gray-900 placeholder-gray-400" 
                     />
                   </div>
                   <div className="w-full md:w-32">

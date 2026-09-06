@@ -73,7 +73,7 @@ function BillingContent() {
             value={ownerEmail}
             onChange={(e) => setOwnerEmail(e.target.value)}
             placeholder="dueño@restaurante.com"
-            className="w-full bg-gray-50 border border-gray-300 rounded-xl px-4 py-3 font-medium focus:outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100 transition-all"
+            className="text-gray-900 placeholder-gray-400"
           />
         </div>
 
