@@ -54,8 +54,35 @@ function BillingContent() {
   return (
     <div className="min-h-screen bg-gray-50 py-12 px-4">
       <div className="max-w-5xl mx-auto space-y-10">
-        
-        <header className="text-center space-y-4">
+
+        {/* ========================================= */}
+        {/* OFERTA LATENTE TIER 1 - HIGH CONVERSION */}
+        {/* ========================================= */}
+        <div className="bg-gradient-to-r from-orange-600 via-red-600 to-orange-600 rounded-3xl p-1 shadow-xl animate-gradient-x hover:scale-[1.01] transition-transform duration-300">
+          <div className="bg-white rounded-[1.25rem] p-6 flex flex-col md:flex-row items-center justify-between gap-4 border border-red-100">
+            <div className="flex items-center gap-4 text-center md:text-left">
+              <span className="text-5xl animate-pulse">🔥</span>
+              <div>
+                <h3 className="text-2xl font-black text-gray-900 tracking-tighter">
+                  ¡Atención Titular! Oferta Exclusiva TIER 1
+                </h3>
+                <p className="text-gray-600 font-medium max-w-xl">
+                  Por tiempo limitado: Obten <span className="font-bold text-red-600">2 meses del plan Enterprise GRATIS</span> adquiriendo tu terminal de Mercado Pago directamente con nuestros agentes de venta autorizados.
+                </p>
+              </div>
+            </div>
+            <button 
+              onClick={() => window.open('https://wa.me/TU_NUMERO_WHATSAPP?text=Hola,%20quiero%20la%20oferta%20Enterprise%20con%20la%20terminal', '_blank')}
+              className="bg-gray-900 text-white font-black px-8 py-4 rounded-xl hover:bg-red-600 transition-colors shadow-lg whitespace-nowrap text-sm uppercase tracking-wider flex items-center gap-2 group"
+            >
+              Contactar Agente
+              <span className="group-hover:translate-x-1 transition-transform">→</span>
+            </button>
+          </div>
+        </div>
+        {/* ========================================= */}
+
+        <header className="text-center space-y-4 pt-4">
           <button onClick={() => router.push(`/admin/dashboard?businessId=${businessId}`)} className="text-sm font-bold text-gray-500 hover:text-black transition-colors">
             &larr; Volver al Panel
           </button>
@@ -73,18 +100,18 @@ function BillingContent() {
             value={ownerEmail}
             onChange={(e) => setOwnerEmail(e.target.value)}
             placeholder="dueño@restaurante.com"
-            className="text-gray-900 placeholder-gray-400"
+            className="w-full text-gray-900 placeholder-gray-400 rounded-xl px-4 py-3 border border-gray-200 focus:ring-2 focus:ring-blue-500 outline-none"
           />
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto relative">
           
           {/* PLAN BÁSICO */}
           <div className="bg-white p-8 rounded-3xl shadow-lg border border-gray-100 flex flex-col">
             <h2 className="text-2xl font-black text-gray-900 mb-2">Plan Esencial</h2>
             <p className="text-gray-500 mb-6 font-medium">Ideal para negocios que comienzan su digitalización.</p>
             <div className="mb-6">
-              <span className="text-5xl font-black text-gray-900">$499</span>
+              <span className="text-5xl font-black text-gray-900">$89</span>
               <span className="text-gray-500 font-bold"> MXN / mes</span>
             </div>
             <ul className="space-y-4 mb-8 flex-1">
@@ -99,7 +126,7 @@ function BillingContent() {
               </li>
             </ul>
             <button 
-              onClick={() => handleSubscribe("Esencial", 499)}
+              onClick={() => handleSubscribe("Esencial", 89)}
               disabled={loadingPlan !== null}
               className="w-full py-4 bg-gray-900 text-white font-black rounded-xl hover:bg-black shadow-xl transition-all disabled:opacity-50"
             >
@@ -115,7 +142,7 @@ function BillingContent() {
             <h2 className="text-2xl font-black text-white mb-2">Plan Enterprise</h2>
             <p className="text-blue-100 mb-6 font-medium">Ecosistema automatizado con Inteligencia Artificial.</p>
             <div className="mb-6">
-              <span className="text-5xl font-black text-white">$999</span>
+              <span className="text-5xl font-black text-white">$149</span>
               <span className="text-blue-200 font-bold"> MXN / mes</span>
             </div>
             <ul className="space-y-4 mb-8 flex-1">
@@ -133,7 +160,7 @@ function BillingContent() {
               </li>
             </ul>
             <button 
-              onClick={() => handleSubscribe("Enterprise", 999)}
+              onClick={() => handleSubscribe("Enterprise", 149)}
               disabled={loadingPlan !== null}
               className="w-full py-4 bg-white text-blue-900 font-black rounded-xl hover:bg-gray-50 shadow-xl transition-all disabled:opacity-50"
             >
