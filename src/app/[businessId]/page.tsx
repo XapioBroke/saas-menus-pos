@@ -485,7 +485,13 @@ export default function CustomerPublicPortal() {
             </div>
             <div className="p-4 bg-white border-t border-gray-100">
               <form onSubmit={handleSendMessage} className="flex gap-2">
-                <input type="text" value={inputMessage} onChange={(e) => setInputMessage(e.target.value)} placeholder="Escribe tu mensaje..." className="flex-1 bg-gray-100 border-transparent focus:border-transparent focus:ring-0 rounded-full px-5 py-3 text-sm font-medium outline-none" />
+                <input 
+  type="text" 
+  value={inputMessage} 
+  onChange={(e) => setInputMessage(e.target.value)} 
+  placeholder="Escribe tu mensaje..." 
+  className="flex-1 bg-gray-100 border-transparent text-gray-900 placeholder-gray-500 focus:border-transparent focus:ring-0 rounded-full px-5 py-3 text-sm font-bold outline-none" 
+/>
                 <button type="submit" disabled={isTyping || !inputMessage.trim()} className="w-12 h-12 flex items-center justify-center rounded-full shadow-md hover:scale-105 transition-transform disabled:opacity-50 disabled:scale-100" style={{ backgroundColor: primaryColor }}><svg className="w-5 h-5 text-white ml-1" fill="currentColor" viewBox="0 0 20 20"><path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z" /></svg></button>
               </form>
             </div>

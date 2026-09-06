@@ -168,15 +168,15 @@ function OnboardingContent() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">Nombre del Negocio</label>
-                <input type="text" required value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium" />
+                <input type="text" required value={businessName} onChange={(e) => setBusinessName(e.target.value)} className="w-full text-gray-900 placeholder-gray-400 rounded-xl px-4 py-3 focus:outline-none font-medium" />
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">ID Único (URL)</label>
-                <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50" />
+                <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full text-gray-900 placeholder-gray-400 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50" />
               </div>
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">Giro Comercial (Cambia el diseño final)</label>
-                <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-medium">
+                <select value={businessType} onChange={(e) => setBusinessType(e.target.value)} className="v">
                   <option value="gastronomia">Alimentos / Menú Vertical</option>
                   <option value="retail">Tienda / Catálogo en Cuadrícula</option>
                 </select>
@@ -210,7 +210,7 @@ function OnboardingContent() {
               </div>
               <div className="flex items-center gap-4 mt-2">
                 <span className="text-xs font-bold text-gray-400 uppercase">O sube tu imagen:</span>
-                <input type="file" accept="image/*" onChange={handleBgChange} className="flex-1 text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-purple-50 file:text-purple-700" />
+                <input type="file" accept="image/*" onChange={handleBgChange} className="text-gray-900 placeholder-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-purple-50 file:text-purple-700" />
               </div>
             </div>
           </div>
@@ -228,17 +228,17 @@ function OnboardingContent() {
               {catalog.map((cat, catIndex) => (
                 <div key={cat.categoryId} className="p-6 bg-gray-50 border border-gray-200 rounded-2xl relative">
                   <button type="button" onClick={() => removeCategory(catIndex)} className="absolute top-4 right-4 text-red-500 text-sm font-black bg-red-50 px-3 py-1 rounded-lg">X Eliminar</button>
-                  <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas, Celulares)" className="mb-4 w-full md:w-1/2 bg-white border border-gray-300 rounded-xl px-4 py-2 font-black" />
+                  <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas, Celulares)" className="text-gray-900 placeholder-gray-400" />
                   
                   <div className="space-y-3">
                     {cat.items.map((item, itemIndex) => (
                       <div key={item.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-gray-100">
                         <div className="flex-1 space-y-3">
                           <div className="flex gap-3">
-                            <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="flex-1 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold" />
-                            <input type="number" value={item.price} onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)} placeholder="$ Precio" className="w-24 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm font-bold text-green-600" />
+                            <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="text-gray-900 placeholder-gray-400" />
+                            <input type="number" value={item.price} onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)} placeholder="$ Precio" className="text-gray-900 placeholder-gray-400" />
                           </div>
-                          <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-600" />
+                          <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400" />
                         </div>
                         <button type="button" onClick={() => removeItem(catIndex, itemIndex)} className="text-gray-300 hover:text-red-500 p-2 shrink-0 self-start md:self-center">
                           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
