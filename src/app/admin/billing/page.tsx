@@ -64,7 +64,7 @@ function BillingContent() {
               <span className="text-5xl animate-pulse">🔥</span>
               <div>
                 <h3 className="text-2xl font-black text-gray-900 tracking-tighter">
-                  ¡Atención Titular! Oferta Exclusiva TIER 1
+                  ¡Atención Titular! Oferta Exclusiva 
                 </h3>
                 <p className="text-gray-600 font-medium max-w-xl">
                   Por tiempo limitado: Obten <span className="font-bold text-red-600">2 meses del plan Enterprise GRATIS</span> adquiriendo tu terminal de Mercado Pago directamente con nuestros agentes de venta autorizados.
