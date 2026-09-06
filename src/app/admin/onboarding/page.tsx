@@ -237,19 +237,29 @@ function OnboardingContent() {
                   
                   <div className="space-y-3">
                     {cat.items.map((item, itemIndex) => (
-                      <div key={item.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-gray-100">
-                        <div className="flex-1 space-y-3">
-                          <div className="flex gap-3">
-                            <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="text-gray-900 placeholder-gray-400" />
-                            <input
-  type="number"
-  value={item.price}
-  onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)}
-  placeholder="$ Precio"
-  
-  // >>> FRAGMENTO DE CLASES TIER 1 RESTAURADO <<<
-  className="w-28 bg-green-50 border border-green-100 rounded-full px-6 py-2.5 text-center text-lg font-black font-sans text-green-700 tracking-tight placeholder:text-green-200 focus:ring-1 focus:ring-green-400 focus:border-green-400 outline-none transition-all shadow-inner-sm"
-/>
+                      <div key={item.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-gray-100 items-center">
+                        <div className="flex-1 space-y-3 w-full">
+                          {/* ESTRUCTURA CORREGIDA: Nombre flex-1 y Precio ml-auto */}
+                          <div className="flex items-center gap-3 w-full">
+                            <input 
+                              type="text" 
+                              value={item.name} 
+                              onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} 
+                              placeholder="Producto" 
+                              className="text-gray-900 placeholder-gray-400 flex-1" 
+                            />
+                            
+                            {/* CONTENEDOR DE PRECIO TIER 1 RESTAURADO CON $ Y ALINEACIÓN DERECHA */}
+                            <div className="relative ml-auto shrink-0">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-600 font-sans font-black text-lg">$</span>
+                              <input
+                                type="number"
+                                value={item.price}
+                                onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)}
+                                placeholder="0"
+                                className="w-32 bg-green-50 border border-green-100 rounded-full pl-10 pr-6 py-2.5 text-right text-lg font-black font-sans text-green-700 tracking-tight placeholder:text-green-200 focus:ring-1 focus:ring-green-400 focus:border-green-400 outline-none transition-all shadow-inner-sm"
+                              />
+                            </div>
                           </div>
                           <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400" />
                         </div>
@@ -266,6 +276,7 @@ function OnboardingContent() {
             </div>
           </div>
 
+          {/* DESPLIEGUE FINAL */}
           <button type="submit" disabled={loading} className="w-full bg-black text-white font-black py-5 rounded-2xl text-xl hover:bg-gray-800 shadow-2xl disabled:opacity-50">
             {loading ? "Estructurando..." : "Guardar y Desplegar Ecosistema"}
           </button>
