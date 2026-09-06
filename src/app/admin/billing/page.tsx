@@ -71,8 +71,12 @@ function BillingContent() {
                 </p>
               </div>
             </div>
+            {/* ========================================================== */}
+            {/* INYECCIÓN DE WHATSAPP REALIZADA AQUÍ (Línea 76 aprox) */}
+            {/* Número formateado: 52 + 3757602652 */}
+            {/* ========================================================== */}
             <button 
-              onClick={() => window.open('https://wa.me/TU_NUMERO_WHATSAPP?text=Hola,%20quiero%20la%20oferta%20Enterprise%20con%20la%20terminal', '_blank')}
+              onClick={() => window.open('https://wa.me/523757602652?text=Hola,%20quiero%20activar%20la%20oferta%20Enterprise%20con%202%20meses%20gratis%20adquiriendo%20la%20terminal', '_blank')}
               className="bg-gray-900 text-white font-black px-8 py-4 rounded-xl hover:bg-red-600 transition-colors shadow-lg whitespace-nowrap text-sm uppercase tracking-wider flex items-center gap-2 group"
             >
               Contactar Agente
