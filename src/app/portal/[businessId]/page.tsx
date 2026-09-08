@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import Link from "next/link"; // Importante para la navegación fluida
 
 export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
-  // Desempaquetar los parámetros de forma segura para Next.js App Router
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
 
@@ -17,29 +17,24 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [isVerifying, setIsVerifying] = useState(false);
   const [dbBusinessName, setDbBusinessName] = useState("");
   
-  // Estados para el flujo de cambio de PIN
   const [requiresPinChange, setRequiresPinChange] = useState(false);
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
 
-  // Nombre de respaldo seguro
   const urlBusinessName = businessId
     ? businessId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     : "Negocio";
 
   const displayName = dbBusinessName || urlBusinessName;
 
-  // Lógica centralizada en el teclado numérico
   const handleKeypad = async (num: string) => {
     if (isVerifying || pin.length >= 4) return;
     
     const nextPin = pin + num;
     setPin(nextPin);
 
-    // Cuando se completan los 4 dígitos
     if (nextPin.length === 4) {
       setIsVerifying(true);
 
-      // FASE 1: Validar PIN de acceso original
       if (!requiresPinChange) {
         try {
           const docRef = doc(db, "concierge_portals", businessId);
@@ -48,7 +43,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           if (docSnap.exists() && docSnap.data().isActive && docSnap.data().pin === nextPin) {
             if (docSnap.data().businessName) setDbBusinessName(docSnap.data().businessName);
             
-            // ¿Requiere cambio de PIN por ser la primera vez?
             if (docSnap.data().requiresPinChange) {
               setRequiresPinChange(true);
               setTimeout(() => {
@@ -65,18 +59,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           console.error("Error Firebase:", error);
           triggerError();
         }
-      } 
-      // FASE 2: Flujo de creación de nuevo PIN
-      else {
+      } else {
         if (newPinConfig.step === 1) {
-          // Guarda el primer intento y pide confirmación
           setNewPinConfig({ step: 2, firstPin: nextPin });
           setTimeout(() => {
             setPin("");
             setIsVerifying(false);
           }, 300);
         } else {
-          // Confirma si los pines coinciden
           if (nextPin === newPinConfig.firstPin) {
             try {
               const docRef = doc(db, "concierge_portals", businessId);
@@ -90,7 +80,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
               triggerError();
             }
           } else {
-            // No coinciden, reiniciar proceso de cambio
             setHasError(true);
             setTimeout(() => {
               setPin("");
@@ -117,7 +106,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     if (!isVerifying) setPin(prev => prev.slice(0, -1));
   };
 
-  // Renderizado condicional de los títulos de seguridad
   const renderSecurityHeader = () => {
     if (!requiresPinChange) {
       return (
@@ -266,10 +254,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
+              {/* BOTÓN CONECTADO AL MÓDULO DE CITAS */}
+              <Link 
+                href={`/portal/${businessId}/citas`}
+                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block"
               >
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
@@ -277,10 +265,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                   </div>
                   <div className="text-left">
                     <p className="text-base font-semibold text-white tracking-tight">Ver Citas de Hoy</p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">3 reservas pendientes</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Gestionar agenda y reservas</p>
                   </div>
                 </div>
-              </motion.button>
+              </Link>
 
               <motion.button 
                 whileHover={{ scale: 0.98 }}
