@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, use } from "react";
+import { useState, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete } from "lucide-react";
-import { doc, getDoc } from "firebase/firestore";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck } from "lucide-react";
+import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
@@ -16,56 +16,134 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [hasError, setHasError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [dbBusinessName, setDbBusinessName] = useState("");
+  
+  // Estados para el flujo de cambio de PIN
+  const [requiresPinChange, setRequiresPinChange] = useState(false);
+  const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
 
-  // Nombre de respaldo seguro con validación de existencia
+  // Nombre de respaldo seguro
   const urlBusinessName = businessId
     ? businessId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     : "Negocio";
 
   const displayName = dbBusinessName || urlBusinessName;
 
-  useEffect(() => {
-    const verifyPinFirebase = async () => {
-      if (pin.length === 4 && businessId) {
-        setIsVerifying(true);
+  // Lógica centralizada en el teclado numérico
+  const handleKeypad = async (num: string) => {
+    if (isVerifying || pin.length >= 4) return;
+    
+    const nextPin = pin + num;
+    setPin(nextPin);
+
+    // Cuando se completan los 4 dígitos
+    if (nextPin.length === 4) {
+      setIsVerifying(true);
+
+      // FASE 1: Validar PIN de acceso original
+      if (!requiresPinChange) {
         try {
           const docRef = doc(db, "concierge_portals", businessId);
           const docSnap = await getDoc(docRef);
 
-          if (docSnap.exists() && docSnap.data().isActive && docSnap.data().pin === pin) {
-            if (docSnap.data().businessName) {
-              setDbBusinessName(docSnap.data().businessName);
+          if (docSnap.exists() && docSnap.data().isActive && docSnap.data().pin === nextPin) {
+            if (docSnap.data().businessName) setDbBusinessName(docSnap.data().businessName);
+            
+            // ¿Requiere cambio de PIN por ser la primera vez?
+            if (docSnap.data().requiresPinChange) {
+              setRequiresPinChange(true);
+              setTimeout(() => {
+                setPin("");
+                setIsVerifying(false);
+              }, 400);
+            } else {
+              setTimeout(() => setIsUnlocked(true), 300);
             }
-            setTimeout(() => setIsUnlocked(true), 300);
           } else {
-            handleError();
+            triggerError();
           }
         } catch (error) {
-          console.error("Error validando acceso:", error);
-          handleError();
-        } finally {
-          setIsVerifying(false);
+          console.error("Error Firebase:", error);
+          triggerError();
+        }
+      } 
+      // FASE 2: Flujo de creación de nuevo PIN
+      else {
+        if (newPinConfig.step === 1) {
+          // Guarda el primer intento y pide confirmación
+          setNewPinConfig({ step: 2, firstPin: nextPin });
+          setTimeout(() => {
+            setPin("");
+            setIsVerifying(false);
+          }, 300);
+        } else {
+          // Confirma si los pines coinciden
+          if (nextPin === newPinConfig.firstPin) {
+            try {
+              const docRef = doc(db, "concierge_portals", businessId);
+              await updateDoc(docRef, { 
+                pin: nextPin, 
+                requiresPinChange: false 
+              });
+              setTimeout(() => setIsUnlocked(true), 300);
+            } catch (error) {
+              console.error("Error actualizando PIN:", error);
+              triggerError();
+            }
+          } else {
+            // No coinciden, reiniciar proceso de cambio
+            setHasError(true);
+            setTimeout(() => {
+              setPin("");
+              setHasError(false);
+              setNewPinConfig({ step: 1, firstPin: "" });
+              setIsVerifying(false);
+            }, 600);
+          }
         }
       }
-    };
+    }
+  };
 
-    verifyPinFirebase();
-  }, [pin, businessId]);
-
-  const handleError = () => {
+  const triggerError = () => {
     setHasError(true);
     setTimeout(() => {
       setPin("");
       setHasError(false);
+      setIsVerifying(false);
     }, 600);
   };
 
-  const handleKeypad = (num: string) => {
-    if (pin.length < 4 && !isVerifying) setPin(prev => prev + num);
+  const handleDelete = () => {
+    if (!isVerifying) setPin(prev => prev.slice(0, -1));
   };
 
-  const handleDelete = () => {
-    setPin(prev => prev.slice(0, -1));
+  // Renderizado condicional de los títulos de seguridad
+  const renderSecurityHeader = () => {
+    if (!requiresPinChange) {
+      return (
+        <>
+          <Lock className="w-8 h-8 text-[#009EE3] mb-6" />
+          <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Acceso a {displayName}</h2>
+          <p className="text-sm text-[#A1A1AA] mb-12 text-center">Ingresa tu PIN de 4 dígitos para acceder</p>
+        </>
+      );
+    }
+    if (newPinConfig.step === 1) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
+          <ShieldCheck className="w-8 h-8 text-[#06B6D4] mb-6" />
+          <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Crea tu nuevo PIN</h2>
+          <p className="text-sm text-[#A1A1AA] mb-12 text-center">Por seguridad, establece un PIN definitivo</p>
+        </motion.div>
+      );
+    }
+    return (
+      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
+        <ShieldCheck className="w-8 h-8 text-[#009EE3] mb-6" />
+        <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Confirma tu PIN</h2>
+        <p className="text-sm text-[#A1A1AA] mb-12 text-center">Vuelve a ingresar los 4 dígitos</p>
+      </motion.div>
+    );
   };
 
   return (
@@ -82,9 +160,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           >
             <div className="absolute top-1/4 w-64 h-64 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[120px] opacity-20 pointer-events-none"></div>
 
-            <Lock className="w-8 h-8 text-[#009EE3] mb-6" />
-            <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Acceso a {displayName}</h2>
-            <p className="text-sm text-[#A1A1AA] mb-12 text-center">Ingresa tu PIN de 4 dígitos para acceder a tus ventas</p>
+            {renderSecurityHeader()}
 
             <motion.div 
               animate={hasError ? { x: [-10, 10, -10, 10, 0] } : {}}

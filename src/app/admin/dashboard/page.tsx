@@ -4,6 +4,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
+import { Smartphone } from "lucide-react"; // Añadido para el ícono del botón puente
 
 function DashboardContent() {
   const router = useRouter();
@@ -33,12 +35,27 @@ function DashboardContent() {
             <h1 className="text-2xl font-black text-gray-900">Panel de Control</h1>
             <p className="text-gray-500 font-medium">Establecimiento: <span className="text-blue-600 font-bold uppercase">{businessId || "No definido"}</span></p>
           </div>
-          <button 
-            onClick={handleLogout}
-            className="px-6 py-2 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors"
-          >
-            Cerrar Sesión
-          </button>
+          
+          {/* Grupo de Botones de Acción */}
+          <div className="flex flex-wrap items-center gap-3">
+            {businessId && (
+              <Link 
+                href={`/portal/${businessId}`}
+                target="_blank" 
+                className="inline-flex items-center gap-2 bg-[#18181B] border border-[#27272A] hover:bg-black text-[#FAFAFA] px-5 py-2.5 rounded-xl text-sm font-bold transition-all shadow-md"
+              >
+                <Smartphone className="w-4 h-4 text-[#009EE3]" />
+                Vista Cliente (Concierge)
+              </Link>
+            )}
+            
+            <button 
+              onClick={handleLogout}
+              className="px-6 py-2.5 bg-red-50 text-red-600 font-bold rounded-xl hover:bg-red-100 transition-colors"
+            >
+              Cerrar Sesión
+            </button>
+          </div>
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
