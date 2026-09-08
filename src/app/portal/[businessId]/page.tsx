@@ -1,38 +1,38 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // Asegúrate de que esta ruta apunte a tu config
+import { db } from "@/lib/firebase";
 
-export default function ConciergePortal({ params }: { params: { businessId: string } }) {
-  // Estados de la interfaz
+export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
+  // Desempaquetar los parámetros de forma segura para Next.js App Router
+  const resolvedParams = use(params);
+  const businessId = resolvedParams.businessId;
+
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [hasError, setHasError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
-  const [dbBusinessName, setDbBusinessName] = useState(""); // Para guardar el nombre real desde Firebase
+  const [dbBusinessName, setDbBusinessName] = useState("");
 
-  // Nombre de respaldo basado en la URL
-  const urlBusinessName = params.businessId
-    .split('-')
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(' ');
+  // Nombre de respaldo seguro con validación de existencia
+  const urlBusinessName = businessId
+    ? businessId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+    : "Negocio";
 
   const displayName = dbBusinessName || urlBusinessName;
 
-  // Validación real contra Firebase Firestore
   useEffect(() => {
     const verifyPinFirebase = async () => {
-      if (pin.length === 4) {
+      if (pin.length === 4 && businessId) {
         setIsVerifying(true);
         try {
-          const docRef = doc(db, "concierge_portals", params.businessId);
+          const docRef = doc(db, "concierge_portals", businessId);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists() && docSnap.data().isActive && docSnap.data().pin === pin) {
-            // Actualizamos el nombre con el de la base de datos si existe
             if (docSnap.data().businessName) {
               setDbBusinessName(docSnap.data().businessName);
             }
@@ -50,7 +50,7 @@ export default function ConciergePortal({ params }: { params: { businessId: stri
     };
 
     verifyPinFirebase();
-  }, [pin, params.businessId]);
+  }, [pin, businessId]);
 
   const handleError = () => {
     setHasError(true);
@@ -71,8 +71,6 @@ export default function ConciergePortal({ params }: { params: { businessId: stri
   return (
     <div className="min-h-screen bg-[#09090B] text-[#FAFAFA] font-sans selection:bg-[#009EE3]/30 overflow-hidden relative">
       <AnimatePresence mode="wait">
-        
-        {/* ======================= PANTALLA DE BLOQUEO (PIN) ======================= */}
         {!isUnlocked ? (
           <motion.div
             key="lock-screen"
@@ -137,8 +135,6 @@ export default function ConciergePortal({ params }: { params: { businessId: stri
             </div>
           </motion.div>
         ) : (
-          
-          /* ======================= DASHBOARD "A PRUEBA DE BOBOS" ======================= */
           <motion.div
             key="dashboard"
             initial={{ opacity: 0, y: 20 }}
