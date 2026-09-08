@@ -1,15 +1,14 @@
 "use client";
 
 import { useState, useEffect, Suspense } from "react";
-import { doc, setDoc, getDoc, writeBatch } from "firebase/firestore";
+import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Link as LinkIcon } from "lucide-react"; // Añadido para UI de éxito
+import { CheckCircle2, Link as LinkIcon } from "lucide-react";
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
-// Galería Extendida Tier 1
 const PRESET_BACKGROUNDS = [
   { id: "tech1", label: "Malla Cyber", url: "https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1000&auto=format&fit=crop" },
   { id: "tech2", label: "Circuitos", url: "https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop" },
@@ -28,7 +27,7 @@ function OnboardingContent() {
   
   const [businessName, setBusinessName] = useState("");
   const [businessId, setBusinessId] = useState("");
-  const [businessPhone, setBusinessPhone] = useState(""); // NUEVO: Para el PIN temporal
+  const [businessPhone, setBusinessPhone] = useState("");
   const [businessType, setBusinessType] = useState("gastronomia");
   const [primaryColor, setPrimaryColor] = useState("#2563eb");
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -42,7 +41,7 @@ function OnboardingContent() {
   ]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
-  const [successLink, setSuccessLink] = useState(""); // NUEVO: UI de Éxito Concierge
+  const [successLink, setSuccessLink] = useState("");
 
   useEffect(() => {
     if (editBusinessId) {
@@ -52,7 +51,6 @@ function OnboardingContent() {
         try {
           const businessSnap = await getDoc(doc(db, "businesses", editBusinessId));
           const menuSnap = await getDoc(doc(db, "menus", editBusinessId));
-          // Consultar el teléfono guardado si existe (para edición)
           const conciergeSnap = await getDoc(doc(db, "concierge_portals", editBusinessId));
           
           if (businessSnap.exists()) {
@@ -77,7 +75,6 @@ function OnboardingContent() {
               })));
             }
           }
-          // Recuperar el teléfono guardado solo para visualización
           if (conciergeSnap.exists() && conciergeSnap.data().originalPhone) {
               setBusinessPhone(conciergeSnap.data().originalPhone);
           }
@@ -120,14 +117,14 @@ function OnboardingContent() {
       return;
     }
     
-    // Validación crucial para Concierge: Necesitamos el teléfono para el PIN de acceso nuevo
-    if (!editBusinessId && (!businessPhone || businessPhone.length < 4)) {
-        setMessage("Error: Se requiere un teléfono de mínimo 4 dígitos para crear el PIN temporal.");
+    // Validamos siempre el teléfono, ya sea creación o edición
+    if (!businessPhone || businessPhone.length < 4) {
+        setMessage("Error: Se requiere el WhatsApp (mínimo 4 dígitos) para generar el PIN Concierge.");
         return;
     }
 
     setLoading(true);
-    setMessage("Desplegando ecosistema y generando portal seguro...");
+    setMessage("Desplegando ecosistema y actualizando portal seguro...");
 
     try {
       let logoUrl = "";
@@ -144,7 +141,6 @@ function OnboardingContent() {
       }
       if (uploadPromises.length > 0) await Promise.all(uploadPromises);
 
-      // Usamos writeBatch para hacer las 3 escrituras (negocio, menu, portal) de forma atómica y segura
       const batch = writeBatch(db);
 
       // 1. Guardado de Configuración Principal
@@ -164,29 +160,24 @@ function OnboardingContent() {
       }));
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
-      // 3. INYECCIÓN DEL PORTAL CONCIERGE LITE
-      // Si estamos creando un negocio nuevo (no editando), creamos su bóveda
-      if (!editBusinessId) {
-        const tempPin = businessPhone.slice(-4);
-        const conciergeRef = doc(db, "concierge_portals", businessId);
-        batch.set(conciergeRef, {
-            businessName: businessName,
-            pin: tempPin,
-            originalPhone: businessPhone,
-            isActive: true,
-            requiresPinChange: true // Forzamos a que el cliente cambie el PIN al entrar
-        });
-      }
+      // 3. INYECCIÓN / ACTUALIZACIÓN DEL PORTAL CONCIERGE LITE
+      const tempPin = businessPhone.slice(-4);
+      const conciergeRef = doc(db, "concierge_portals", businessId);
+      
+      batch.set(conciergeRef, {
+          businessName: businessName,
+          pin: tempPin, // Se establece/resetea el PIN temporal
+          originalPhone: businessPhone,
+          isActive: true,
+          requiresPinChange: true // Forzamos a que el cliente vuelva a cambiar su PIN por seguridad
+      }, { merge: true });
 
-      // Ejecutar todo
       await batch.commit();
 
       if (!editBusinessId) {
-          // Si es nuevo, mostramos la pantalla de éxito con el enlace
           setSuccessLink(`${window.location.origin}/portal/${businessId}`);
       } else {
-          // Si solo editó, lo regresamos a su dashboard normal
-          setMessage("¡Ecosistema actualizado!");
+          setMessage("¡Ecosistema actualizado exitosamente!");
           setTimeout(() => router.push(`/admin/dashboard?businessId=${businessId}`), 1500);
       }
 
@@ -198,7 +189,6 @@ function OnboardingContent() {
     }
   };
 
-  // PANTALLA DE ÉXITO CONCIERGE
   if (successLink) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -232,7 +222,6 @@ function OnboardingContent() {
     );
   }
 
-  // RENDERIZADO DEL FORMULARIO ORIGINAL MEJORADO
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
       <div className="max-w-4xl mx-auto space-y-8">
@@ -244,7 +233,6 @@ function OnboardingContent() {
         <form onSubmit={handleSave} className="space-y-8">
           {message && <div className={`p-4 rounded-xl text-sm font-bold text-center ${message.includes("Error") ? "bg-red-50 text-red-700" : "bg-green-50 text-green-700"} border`}>{message}</div>}
 
-          {/* IDENTIDAD */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6">
             <h2 className="text-xl font-black text-gray-900 border-b pb-2">1. Identidad Corporativa y Accesos</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -257,19 +245,20 @@ function OnboardingContent() {
                 <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50 bg-gray-100" />
               </div>
               
-              {/* NUEVO CAMPO: TELÉFONO PARA PIN */}
+              {/* CAMPO DESBLOQUEADO: Ahora puedes editar el WhatsApp de clientes antiguos */}
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">WhatsApp del Negocio <span className="text-blue-500 text-xs">(Genera PIN)</span></label>
                 <input 
                   type="text" 
-                  required={!editBusinessId} 
+                  required
                   value={businessPhone} 
                   onChange={(e) => setBusinessPhone(e.target.value)} 
-                  disabled={!!editBusinessId}
                   placeholder="Ej. 3312345678" 
-                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50 disabled:opacity-50" 
+                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
                 />
-                {!editBusinessId && <p className="text-xs text-gray-500 mt-1">Los últimos 4 dígitos serán la contraseña del cliente.</p>}
+                <p className="text-xs text-gray-500 mt-1">
+                  {editBusinessId ? "Modificarlo reseteará el PIN del cliente a estos últimos 4 dígitos." : "Los últimos 4 dígitos serán la contraseña del cliente."}
+                </p>
               </div>
 
               <div className="space-y-2">
@@ -295,7 +284,6 @@ function OnboardingContent() {
               </div>
             </div>
 
-            {/* FONDOS PREMIUM SCROLLABLES */}
             <div className="space-y-4 pt-4 border-t border-gray-100">
               <label className="block text-sm font-bold text-gray-700">Fondo de Pantalla Premium</label>
               <div className="flex overflow-x-auto gap-4 pb-4 snap-x hide-scrollbar">
@@ -317,14 +305,12 @@ function OnboardingContent() {
             </div>
           </div>
 
-          {/* IA */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-4">
             <h2 className="text-xl font-black text-gray-900 border-b pb-2">2. Inteligencia Artificial</h2>
             <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none text-gray-900 placeholder-gray-400" 
             />
           </div>
 
-          {/* CATÁLOGO */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6">
             <h2 className="text-xl font-black text-gray-900 border-b pb-2">3. Constructor de Catálogo</h2>
             <div className="space-y-6">
@@ -346,7 +332,6 @@ function OnboardingContent() {
                               className="text-gray-900 placeholder-gray-400 flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-green-100 font-medium" 
                             />
                             
-                            {/* CONTENEDOR DE PRECIO */}
                             <div className="relative ml-auto shrink-0">
                               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-600 font-sans font-black text-lg">$</span>
                               <input
@@ -373,7 +358,6 @@ function OnboardingContent() {
             </div>
           </div>
 
-          {/* DESPLIEGUE FINAL */}
           <button type="submit" disabled={loading} className="w-full bg-black text-white font-black py-5 rounded-2xl text-xl hover:bg-gray-800 shadow-2xl disabled:opacity-50 transition-all flex justify-center gap-3">
             {loading ? "Estructurando Bóveda y Catálogo..." : "Guardar y Desplegar Ecosistema"}
           </button>
