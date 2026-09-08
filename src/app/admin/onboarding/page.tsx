@@ -6,24 +6,22 @@ import { Save, Plus, Trash2, Smartphone, Bot, LayoutTemplate, Link as LinkIcon, 
 import { doc, setDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
+// ESTA ES LA LÍNEA CRÍTICA QUE NEXT.JS ESTÁ BUSCANDO:
 export default function SuperAdminOnboarding() {
   const [isSaving, setIsSaving] = useState(false);
   const [successLink, setSuccessLink] = useState("");
 
-  // 1. ESTADO: Identidad Corporativa y Seguridad Concierge
   const [identity, setIdentity] = useState({
     businessName: "",
-    businessId: "", // Se autogenera
-    phone: "", // Para extraer los últimos 4 dígitos como PIN temporal
+    businessId: "",
+    phone: "",
     giro: "Alimentos / Menú Vertical",
     color: "#2563eb",
     background: "Malla Cyber"
   });
 
-  // 2. ESTADO: Inteligencia Artificial
   const [aiPersonality, setAiPersonality] = useState("");
 
-  // 3. ESTADO: Constructor de Catálogo
   const [catalog, setCatalog] = useState([
     {
       id: crypto.randomUUID(),
@@ -32,7 +30,6 @@ export default function SuperAdminOnboarding() {
     }
   ]);
 
-  // Manejadores de Catálogo Dinámico
   const addCategory = () => {
     setCatalog([...catalog, { id: crypto.randomUUID(), categoryName: "", products: [{ id: crypto.randomUUID(), name: "", price: 0, description: "" }] }]);
   };
@@ -59,7 +56,6 @@ export default function SuperAdminOnboarding() {
     }));
   };
 
-  // Autogenerar Slug (ID Único)
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const name = e.target.value;
     setIdentity({
@@ -69,7 +65,6 @@ export default function SuperAdminOnboarding() {
     });
   };
 
-  // GUARDADO MAESTRO EN FIREBASE (Batch Write)
   const handleSavePlatform = async () => {
     if (!identity.businessId || !identity.phone || identity.phone.length < 4) {
       alert("Se requiere el Nombre del Negocio y un Teléfono válido (mínimo 4 dígitos) para generar el PIN.");
@@ -80,7 +75,6 @@ export default function SuperAdminOnboarding() {
     try {
       const batch = writeBatch(db);
 
-      // 1. Guardar Configuración Pública/Admin de la Plataforma
       const platformRef = doc(db, "businesses", identity.businessId);
       batch.set(platformRef, {
         identity,
@@ -89,20 +83,16 @@ export default function SuperAdminOnboarding() {
         createdAt: new Date().toISOString()
       });
 
-      // 2. Guardar Bóveda de Seguridad Concierge (El Portal Cliente)
-      const tempPin = identity.phone.slice(-4); // Últimos 4 dígitos
+      const tempPin = identity.phone.slice(-4);
       const conciergeRef = doc(db, "concierge_portals", identity.businessId);
       batch.set(conciergeRef, {
         businessName: identity.businessName,
         pin: tempPin,
         isActive: true,
-        requiresPinChange: true // Obliga al cliente a cambiar el PIN 1234 o el de su teléfono
+        requiresPinChange: true 
       });
 
-      // Ejecutar ambas escrituras atómicamente
       await batch.commit();
-
-      // Mostrar link de éxito
       setSuccessLink(`${window.location.origin}/portal/${identity.businessId}`);
     } catch (error) {
       console.error("Error creando plataforma:", error);
@@ -148,7 +138,7 @@ export default function SuperAdminOnboarding() {
           <p className="text-gray-500 font-medium">Diseña la marca, el catálogo, las reglas de IA y genera el acceso de cliente.</p>
         </header>
 
-        {/* --- SECCIÓN 1: IDENTIDAD Y SEGURIDAD --- */}
+        {/* SECCIÓN 1: IDENTIDAD Y SEGURIDAD */}
         <section className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100">
           <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
             <LayoutTemplate className="w-6 h-6 text-blue-600" />
@@ -165,7 +155,7 @@ export default function SuperAdminOnboarding() {
               <input type="text" readOnly value={identity.businessId} className="w-full p-3 bg-gray-100 border border-gray-200 rounded-xl text-gray-500 font-mono text-sm outline-none" />
             </div>
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp / Teléfono (Para generar PIN)</label>
+              <label className="block text-sm font-bold text-gray-700 mb-2">WhatsApp / Teléfono</label>
               <input type="text" value={identity.phone} onChange={e => setIdentity({...identity, phone: e.target.value})} placeholder="Ej. 3312345678" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200 transition-all" />
               <p className="text-xs text-gray-400 mt-1">Los últimos 4 dígitos serán su PIN temporal de acceso.</p>
             </div>
@@ -195,7 +185,7 @@ export default function SuperAdminOnboarding() {
           </div>
         </section>
 
-        {/* --- SECCIÓN 2: IA --- */}
+        {/* SECCIÓN 2: IA */}
         <section className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100">
           <div className="flex items-center gap-3 mb-6 border-b border-gray-100 pb-4">
             <Bot className="w-6 h-6 text-purple-600" />
@@ -204,12 +194,12 @@ export default function SuperAdminOnboarding() {
           <textarea 
             value={aiPersonality} 
             onChange={e => setAiPersonality(e.target.value)}
-            placeholder="Define la personalidad de tu IA. Ej: Eres un mesero amable de una pizzería napolitana..." 
+            placeholder="Define la personalidad de tu IA..." 
             className="w-full h-32 p-4 bg-gray-50 border border-gray-200 rounded-xl outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200 transition-all resize-none"
           />
         </section>
 
-        {/* --- SECCIÓN 3: CATÁLOGO --- */}
+        {/* SECCIÓN 3: CATÁLOGO */}
         <section className="bg-white p-8 rounded-[32px] shadow-sm border border-gray-100">
           <div className="flex items-center justify-between mb-6 border-b border-gray-100 pb-4">
             <div className="flex items-center gap-3">
@@ -225,8 +215,6 @@ export default function SuperAdminOnboarding() {
             <AnimatePresence>
               {catalog.map((cat, catIndex) => (
                 <motion.div key={cat.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, height: 0 }} className="border border-gray-200 rounded-2xl p-6 bg-gray-50/50">
-                  
-                  {/* Cabecera de Categoría */}
                   <div className="flex items-center gap-4 mb-6">
                     <input 
                       type="text" 
@@ -244,7 +232,6 @@ export default function SuperAdminOnboarding() {
                     </button>
                   </div>
 
-                  {/* Lista de Productos */}
                   <div className="space-y-4 pl-4 md:pl-8 border-l-2 border-gray-200">
                     {cat.products.map((prod, prodIndex) => (
                       <div key={prod.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-4">
@@ -298,14 +285,13 @@ export default function SuperAdminOnboarding() {
                       <Plus className="w-4 h-4" /> Agregar Producto
                     </button>
                   </div>
-
                 </motion.div>
               ))}
             </AnimatePresence>
           </div>
         </section>
 
-        {/* --- BOTÓN DE GUARDADO MAESTRO --- */}
+        {/* BOTÓN DE GUARDADO */}
         <div className="sticky bottom-6 mt-12 flex justify-end">
           <button 
             onClick={handleSavePlatform}
