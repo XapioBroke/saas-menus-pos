@@ -2,10 +2,10 @@
 
 import { useState, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import Link from "next/link"; // Importante para la navegación fluida
+import Link from "next/link"; 
 
 export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
   const resolvedParams = use(params);
@@ -19,6 +19,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   
   const [requiresPinChange, setRequiresPinChange] = useState(false);
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
+
+  // Estados para los Modales de Acción (QR y Soporte)
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [showSupportModal, setShowSupportModal] = useState(false);
 
   const urlBusinessName = businessId
     ? businessId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -204,7 +208,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ type: "spring", stiffness: 260, damping: 20 }}
-            className="w-full max-w-md mx-auto p-6"
+            className="w-full max-w-md mx-auto p-6 pb-24"
           >
             <header className="mb-8 mt-4 flex items-center justify-between">
               <div>
@@ -238,9 +242,12 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             </motion.div>
 
             <div className="grid grid-cols-1 gap-4">
+              
+              {/* BOTÓN 1: COMPARTIR QR */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
+                onClick={() => setShowQrModal(true)}
                 className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
               >
                 <div className="flex items-center gap-4">
@@ -248,13 +255,13 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     <QrCode className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
                   </div>
                   <div className="text-left">
-                    <p className="text-base font-semibold text-white tracking-tight">Compartir Menú QR</p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">Enviar a clientes por WhatsApp</p>
+                    <p className="text-base font-semibold text-white tracking-tight">Código QR del Negocio</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Mostrar o descargar para clientes</p>
                   </div>
                 </div>
               </motion.button>
 
-              {/* BOTÓN CONECTADO AL MÓDULO DE CITAS */}
+              {/* BOTÓN 2: MÓDULO DE CITAS */}
               <Link 
                 href={`/portal/${businessId}/citas`}
                 className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block"
@@ -270,9 +277,11 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </Link>
 
+              {/* BOTÓN 3: SOPORTE CONCIERGE */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
+                onClick={() => setShowSupportModal(true)}
                 className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
               >
                 <div className="flex items-center gap-4">
@@ -286,6 +295,107 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
             </div>
+
+            {/* --- INYECCIÓN DE MODALES --- */}
+
+            {/* MODAL QR DE RESERVAS / MENÚ */}
+            <AnimatePresence>
+              {showQrModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full text-center space-y-6 shadow-2xl relative">
+                    <h3 className="text-xl font-bold text-white">QR para tus Clientes</h3>
+                    <p className="text-xs text-[#A1A1AA]">Escanea o descarga este código para que tus clientes agenden directo.</p>
+                    
+                    <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://miterminal.com/reservas/${businessId}`)}`} 
+                        alt="QR Reservas" 
+                        className="w-48 h-48 object-contain mx-auto" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(`https://miterminal.com/reservas/${businessId}`)}&margin=20`, "_blank")}
+                        className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity"
+                      >
+                        Descargar QR en HD
+                      </button>
+                      <button 
+                        onClick={() => setShowQrModal(false)}
+                        className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* MODAL DE SOPORTE INTELIGENTE (FAQ + WHATSAPP FALLBACK) */}
+            <AnimatePresence>
+              {showSupportModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 rounded-[32px] max-w-sm w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto hide-scrollbar">
+                    
+                    <div className="flex justify-between items-center border-b border-[#27272A] pb-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#009EE3]" /> Asistente de Soporte</h3>
+                        <p className="text-xs text-[#A1A1AA] mt-1">Respuestas instantáneas a dudas comunes</p>
+                      </div>
+                      <button onClick={() => setShowSupportModal(false)} className="p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                    </div>
+
+                    {/* Respuestas Precargadas (Reglas de deflexión) */}
+                    <div className="space-y-3">
+                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
+                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
+                          ¿Cómo edito mi catálogo o menú?
+                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
+                        </summary>
+                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
+                          Para garantizar que tu diseño e Inteligencia Artificial funcionen perfecto, las modificaciones de catálogo las realiza nuestro equipo. Contáctanos por WhatsApp indicando los cambios que deseas.
+                        </p>
+                      </details>
+
+                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
+                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
+                          ¿Cómo imprimo mi Código QR?
+                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
+                        </summary>
+                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
+                          En el panel principal pulsa el botón "Código QR del Negocio" y selecciona "Descargar QR en HD". Obtendrás un archivo de alta resolución ideal para imprenta o calcomanías.
+                        </p>
+                      </details>
+
+                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
+                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
+                          ¿Cómo confirmo las citas de mis clientes?
+                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
+                        </summary>
+                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
+                          Entra a la sección "Ver Citas de Hoy". Ahí verás tu agenda completa. Usa el botón verde para "Confirmar" la cita o el rojo para "Cancelar".
+                        </p>
+                      </details>
+                    </div>
+
+                    {/* Fallback a WhatsApp Humano - ATENCIÓN: Cambia el 523300000000 por tu número real */}
+                    <div className="pt-4 border-t border-[#27272A] text-center">
+                      <p className="text-xs text-[#A1A1AA] mb-4">¿Tu consulta requiere asistencia personalizada?</p>
+                      <button 
+                        onClick={() => window.open(`https://wa.me/523757602652?text=Hola,%20soy%20el%20negocio%20${businessId}%20y%20necesito%20asistencia%20con%20mi%20plataforma.`, "_blank")}
+                        className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
+                      >
+                        <MessageCircle className="w-4 h-4" /> Hablar con Asesor Humano
+                      </button>
+                    </div>
+
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
           </motion.div>
         )}
       </AnimatePresence>
