@@ -128,6 +128,12 @@ export default function AuthPage() {
               className="text-blue-600 hover:text-blue-800 transition-colors focus:outline-none"
             >
               {isLogin ? "Regístrate aquí" : "Inicia sesión"}
+              <div className="mt-8 text-center">
+  {/* Este enlace es súper discreto, casi invisible para un usuario normal */}
+  <a href="/super-admin/login" className="text-gray-200 hover:text-gray-400 text-[10px] transition-colors">
+    π
+  </a>
+</div>
             </button>
           </p>
         </div>
