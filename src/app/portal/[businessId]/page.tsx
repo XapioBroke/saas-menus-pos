@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, use } from "react";
+import { useState, useEffect, useRef, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
@@ -11,18 +11,27 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
 
+  // Estados de Seguridad y Teclado
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [hasError, setHasError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [dbBusinessName, setDbBusinessName] = useState("");
-  
   const [requiresPinChange, setRequiresPinChange] = useState(false);
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
 
-  // Estados para los Modales de Acción (QR y Soporte)
+  // Estados para los Modales de Acción
   const [showQrModal, setShowQrModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+
+  // Estados para el Chat Inteligente de Soporte (Concierge)
+  const [supportMessages, setSupportMessages] = useState<{role: string, content: string}[]>([
+    { role: "assistant", content: "Hola, soy el equipo de Soporte de MiTerminal. ¿En qué puedo ayudarte hoy?" }
+  ]);
+  const [supportInput, setSupportInput] = useState("");
+  const [isSupportTyping, setIsSupportTyping] = useState(false);
+  const [needsHuman, setNeedsHuman] = useState(false);
+  const supportEndRef = useRef<HTMLDivElement>(null);
 
   const urlBusinessName = businessId
     ? businessId.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
@@ -30,6 +39,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
   const displayName = dbBusinessName || urlBusinessName;
 
+  // Auto-scroll del chat de soporte
+  useEffect(() => {
+    if (showSupportModal) {
+      supportEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [supportMessages, isSupportTyping, showSupportModal]);
+
+  // Lógica del Teclado Numérico de Seguridad
   const handleKeypad = async (num: string) => {
     if (isVerifying || pin.length >= 4) return;
     
@@ -108,6 +125,40 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
   const handleDelete = () => {
     if (!isVerifying) setPin(prev => prev.slice(0, -1));
+  };
+
+  // Lógica del Envío del Chat de Soporte (Llama a tu API Costo $0)
+  const handleSupportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supportInput.trim()) return;
+
+    const userMsg = supportInput;
+    setSupportMessages(prev => [...prev, { role: "user", content: userMsg }]);
+    setSupportInput("");
+    setIsSupportTyping(true);
+    setNeedsHuman(false);
+
+    try {
+      const res = await fetch('/api/concierge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messages: [...supportMessages, { role: "user", content: userMsg }]
+        })
+      });
+      const data = await res.json();
+      
+      if (data.reply) {
+        setSupportMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
+      }
+      if (data.escalate) {
+        setNeedsHuman(true); // Muestra botón de WhatsApp
+      }
+    } catch (error) {
+      setSupportMessages(prev => [...prev, { role: "assistant", content: "Error de conexión. Intenta de nuevo." }]);
+    } finally {
+      setIsSupportTyping(false);
+    }
   };
 
   const renderSecurityHeader = () => {
@@ -333,63 +384,70 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
               )}
             </AnimatePresence>
 
-            {/* MODAL DE SOPORTE INTELIGENTE (FAQ + WHATSAPP FALLBACK) */}
+            {/* MODAL DE SOPORTE INTELIGENTE (CHAT INTERACTIVO) */}
             <AnimatePresence>
               {showSupportModal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 rounded-[32px] max-w-sm w-full space-y-6 shadow-2xl relative max-h-[90vh] overflow-y-auto hide-scrollbar">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-0 rounded-[32px] max-w-sm w-full shadow-2xl relative flex flex-col h-[500px] max-h-[90vh] overflow-hidden">
                     
-                    <div className="flex justify-between items-center border-b border-[#27272A] pb-4">
+                    {/* Header del Chat */}
+                    <div className="flex justify-between items-center border-b border-[#27272A] p-6 pb-4 bg-[#18181B] z-10">
                       <div>
-                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#009EE3]" /> Asistente de Soporte</h3>
-                        <p className="text-xs text-[#A1A1AA] mt-1">Respuestas instantáneas a dudas comunes</p>
+                        <h3 className="text-xl font-bold text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#009EE3]" /> Soporte SaaS</h3>
+                        <p className="text-xs text-[#A1A1AA] mt-1">Asistencia técnica al instante</p>
                       </div>
                       <button onClick={() => setShowSupportModal(false)} className="p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                     </div>
 
-                    {/* Respuestas Precargadas (Reglas de deflexión) */}
-                    <div className="space-y-3">
-                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
-                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
-                          ¿Cómo edito mi catálogo o menú?
-                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
-                        </summary>
-                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
-                          Para garantizar que tu diseño e Inteligencia Artificial funcionen perfecto, las modificaciones de catálogo las realiza nuestro equipo. Contáctanos por WhatsApp indicando los cambios que deseas.
-                        </p>
-                      </details>
-
-                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
-                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
-                          ¿Cómo imprimo mi Código QR?
-                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
-                        </summary>
-                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
-                          En el panel principal pulsa el botón "Código QR del Negocio" y selecciona "Descargar QR en HD". Obtendrás un archivo de alta resolución ideal para imprenta o calcomanías.
-                        </p>
-                      </details>
-
-                      <details className="group bg-[#27272A]/30 border border-[#27272A] rounded-2xl p-4 cursor-pointer [&_summary::-webkit-details-marker]:hidden">
-                        <summary className="font-semibold text-sm text-white flex justify-between items-center">
-                          ¿Cómo confirmo las citas de mis clientes?
-                          <span className="text-[#009EE3] group-open:rotate-180 transition-transform">▼</span>
-                        </summary>
-                        <p className="text-xs text-[#A1A1AA] mt-3 leading-relaxed">
-                          Entra a la sección "Ver Citas de Hoy". Ahí verás tu agenda completa. Usa el botón verde para "Confirmar" la cita o el rojo para "Cancelar".
-                        </p>
-                      </details>
+                    {/* Área de Mensajes */}
+                    <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#09090B]">
+                      {supportMessages.map((msg, i) => (
+                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-[#27272A] text-white rounded-br-none' : 'bg-[#009EE3] text-white rounded-bl-none'} shadow-sm`}>
+                            {msg.content}
+                          </div>
+                        </div>
+                      ))}
+                      
+                      {isSupportTyping && (
+                        <div className="flex justify-start">
+                          <div className="bg-[#009EE3] p-3 rounded-2xl text-white rounded-bl-none animate-pulse text-xs">Escribiendo...</div>
+                        </div>
+                      )}
+                      
+                      {/* Botón Fallback de WhatsApp Automático (IMPORTANTE: Cambia el 523300000000 por tu número) */}
+                      {needsHuman && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 pb-2">
+                          <button 
+                            onClick={() => window.open(`https://wa.me/523300000000?text=Hola,%20soy%20el%20negocio%20${businessId}%20y%20necesito%20asistencia%20humana%20con%20mi%20plataforma.`, "_blank")}
+                            className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
+                          >
+                            <MessageCircle className="w-4 h-4" /> Hablar con Asesor Humano
+                          </button>
+                        </motion.div>
+                      )}
+                      
+                      {/* Referencia para el auto-scroll */}
+                      <div ref={supportEndRef} style={{ float:"left", clear: "both" }} />
                     </div>
 
-                    {/* Fallback a WhatsApp Humano - ATENCIÓN: Cambia el 523300000000 por tu número real */}
-                    <div className="pt-4 border-t border-[#27272A] text-center">
-                      <p className="text-xs text-[#A1A1AA] mb-4">¿Tu consulta requiere asistencia personalizada?</p>
+                    {/* Formulario de Input */}
+                    <form onSubmit={handleSupportSubmit} className="p-4 bg-[#18181B] border-t border-[#27272A] flex gap-2">
+                      <input 
+                        type="text" 
+                        value={supportInput} 
+                        onChange={e => setSupportInput(e.target.value)} 
+                        placeholder="Ej. ¿Cómo imprimo mi QR?" 
+                        className="flex-1 bg-[#27272A] text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-[#009EE3] transition-all" 
+                      />
                       <button 
-                        onClick={() => window.open(`https://wa.me/523757602652?text=Hola,%20soy%20el%20negocio%20${businessId}%20y%20necesito%20asistencia%20con%20mi%20plataforma.`, "_blank")}
-                        className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
+                        type="submit" 
+                        disabled={isSupportTyping} 
+                        className="bg-[#009EE3] p-2.5 rounded-xl text-white hover:bg-[#06B6D4] disabled:opacity-50 flex items-center justify-center transition-colors"
                       >
-                        <MessageCircle className="w-4 h-4" /> Hablar con Asesor Humano
+                        <Send className="w-4 h-4 ml-0.5" />
                       </button>
-                    </div>
+                    </form>
 
                   </motion.div>
                 </div>
