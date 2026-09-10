@@ -177,7 +177,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
                     {item.description}
                   </p>
                   <div className={`mt-3 font-mono font-bold text-lg text-white ${businessType === 'retail' ? 'mt-auto pt-3 border-t border-[#27272A]' : ''}`}>
-                    ${item.price.toFixed(2)}
+                   ${(Number(item.price) || 0).toFixed(2)}
                   </div>
                 </div>
               </motion.div>
