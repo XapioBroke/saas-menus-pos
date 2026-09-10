@@ -12,6 +12,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const businessId = resolvedParams.businessId;
 
   // Estados de Seguridad y Teclado
+  const [showSplash, setShowSplash] = useState(true); // <-- NUEVO ESTADO PARA EL SPLASH
+  // Temporizador del Splash Screen (Aura Premium)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 1800); // 1.8 segundos de aura
+    return () => clearTimeout(timer);
+  }, []);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [hasError, setHasError] = useState(false);
@@ -235,12 +243,43 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     );
   };
 
-  return (
+ return (
     <div className="min-h-screen bg-[#09090B] text-[#FAFAFA] font-sans selection:bg-[#009EE3]/30 overflow-hidden relative">
       <AnimatePresence mode="wait">
-        {!isUnlocked ? (
+        
+        {/* 1. SPLASH SCREEN (AURA PREMIUM) */}
+        {showSplash ? (
+          <motion.div
+            key="splash-screen"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#09090B]"
+          >
+            {/* Brillo de fondo */}
+            <div className="absolute w-64 h-64 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[100px] opacity-20 animate-pulse"></div>
+            
+            {/* Logo o Marca */}
+            <motion.div 
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+              className="relative z-10 flex flex-col items-center"
+            >
+              <div className="w-16 h-16 bg-gradient-to-tr from-[#009EE3] to-[#06B6D4] rounded-2xl flex items-center justify-center shadow-[0_0_40px_rgba(0,158,227,0.4)] mb-4">
+                <ShieldCheck className="w-8 h-8 text-white" />
+              </div>
+              <h1 className="text-2xl font-black tracking-widest text-white uppercase">MiTerminal</h1>
+              <p className="text-[10px] text-[#009EE3] tracking-[0.3em] mt-2 font-semibold">SISTEMA INICIANDO</p>
+            </motion.div>
+          </motion.div>
+        ) : !isUnlocked ? (
+          
+          /* 2. PANTALLA DEL PIN (Tu código actual de la cerradura) */
           <motion.div
             key="lock-screen"
+            // ... resto de tu código del PIN ...
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}

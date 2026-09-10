@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload } from "lucide-react";
+import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -237,10 +237,22 @@ export default function SuperAdminDashboard() {
                       <h3 className="text-lg font-bold text-white mt-2">{biz.businessName}</h3>
                       <p className="text-xs text-[#A1A1AA] capitalize">Giro: {biz.businessType}</p>
                     </div>
-                    <div className="flex items-center justify-between pt-4 border-t border-[#27272A]">
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => window.open(`/portal/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"><ExternalLink className="w-3.5 h-3.5" /> Portal</button>
-                        <button onClick={() => window.open(`/reservas/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"><ExternalLink className="w-3.5 h-3.5" /> Reservas</button>
+                    <div className="flex items-center justify-between pt-4 border-t border-[#27272A] flex-wrap gap-y-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <button onClick={() => window.open(`/portal/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
+                          <ExternalLink className="w-3.5 h-3.5" /> Portal
+                        </button>
+                        <button onClick={() => window.open(`/reservas/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
+                          <ExternalLink className="w-3.5 h-3.5" /> Reservas
+                        </button>
+                        {/* BOTÓN DE LLAVE QR INYECTADO AQUÍ */}
+                        <button 
+                          onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(`https://miterminal.com/portal/${biz.id}`)}`, "_blank")} 
+                          className="px-3 py-2 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
+                          title="QR de Acceso para el Dueño"
+                        >
+                          <QrCode className="w-3.5 h-3.5" /> Llave QR
+                        </button>
                       </div>
                       <div className="flex items-center gap-2">
                         <button onClick={() => router.push(`/admin/onboarding?businessId=${biz.id}`)} className="p-2 bg-[#27272A] hover:bg-amber-500/20 text-amber-400 rounded-xl transition-colors" title="Editar Catálogo"><Edit3 className="w-4 h-4" /></button>
