@@ -5,6 +5,16 @@ import { useRouter } from "next/navigation";
 export default function LandingPage() {
   const router = useRouter();
 
+  // Función del Protocolo Fantasma (Bypass oculto al Super-Admin)
+  const handlePhantomBypass = (e: React.MouseEvent<HTMLHeadingElement>) => {
+    if (e.detail === 3) {
+      // 1. Inyectamos la sesión maestra silenciosamente
+      localStorage.setItem("is_super_admin", "true");
+      // 2. Teletransporte al centro de mando sin pasar por login
+      router.push('/super-admin/dashboard');
+    }
+  };
+
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-white px-4 text-center">
       
@@ -13,8 +23,11 @@ export default function LandingPage() {
         🔥 PRIMEROS 50 CLIENTES: 6 MESES DE IA GRATIS
       </div>
 
-      {/* Titular Principal */}
-      <h1 className="text-5xl md:text-7xl font-black text-gray-900 tracking-tight mb-4 max-w-4xl">
+      {/* Titular Principal - PROTOCOLO FANTASMA INYECTADO AQUÍ */}
+      <h1 
+        onClick={handlePhantomBypass}
+        className="text-5xl md:text-7xl font-black text-gray-900 tracking-tight mb-4 max-w-4xl cursor-default select-none"
+      >
         El futuro de tu negocio con <br/>
         <span className="text-blue-600">Cobros y Menús Inteligentes</span>
       </h1>

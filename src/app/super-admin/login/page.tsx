@@ -9,15 +9,8 @@ export default function SuperAdminLogin() {
   const router = useRouter();
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState(false);
-// Y en tu Título/Logo agregas:
-<h1 
-  onClick={(e) => e.detail === 3 && router.push('/super-admin/dashboard')} 
-  className="cursor-default select-none"
->
-  MiTerminal
-</h1>
 
-  // Define aquí tu código secreto exclusivo de Super-Admin (puedes cambiarlo cuando quieras)
+  // Define aquí tu código secreto exclusivo de Super-Admin
   const MASTER_PIN = "7777"; 
 
   const handleLogin = (e: React.FormEvent) => {
@@ -29,6 +22,16 @@ export default function SuperAdminLogin() {
     } else {
       setError(true);
       setTimeout(() => setError(false), 800);
+    }
+  };
+
+  // Función del Protocolo Fantasma (Bypass oculto)
+  const handlePhantomBypass = (e: React.MouseEvent<HTMLHeadingElement>) => {
+    if (e.detail === 3) {
+      // 1. Inyectamos la sesión para que el Dashboard no nos rechace
+      localStorage.setItem("is_super_admin", "true");
+      // 2. Redirigimos sin pasar por el PIN
+      router.push('/super-admin/dashboard');
     }
   };
 
@@ -46,7 +49,13 @@ export default function SuperAdminLogin() {
         </div>
 
         <div>
-          <h1 className="text-xl font-bold tracking-tight">Acceso Super-Admin</h1>
+          {/* AQUÍ ESTÁ EL PROTOCOLO FANTASMA INYECTADO EN EL TÍTULO */}
+          <h1 
+            onClick={handlePhantomBypass}
+            className="text-xl font-bold tracking-tight cursor-default select-none"
+          >
+            Acceso MiTerminal
+          </h1>
           <p className="text-xs text-[#A1A1AA] mt-1">Introduce tu llave maestra de gestión SaaS</p>
         </div>
 
@@ -54,7 +63,7 @@ export default function SuperAdminLogin() {
           <motion.div animate={error ? { x: [-10, 10, -10, 10, 0] } : {}} transition={{ duration: 0.4 }}>
             <input 
               type="password" 
-              maxLength={6}
+              maxLength={4} // Ajustado a 4 si tu PIN es "7777"
               required
               value={passcode}
               onChange={(e) => setPasscode(e.target.value)}
