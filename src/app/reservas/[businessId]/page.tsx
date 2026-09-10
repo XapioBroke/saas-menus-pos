@@ -115,13 +115,19 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     setChatInput("");
     setIsTyping(true);
 
+    // INYECCIÓN TIER 1: Combinamos las instrucciones del dueño con el catálogo real
+    const catalogContext = catalogServices.length > 0 
+      ? `\n\nIMPORTANTE - Este es nuestro catálogo/menú actual: ${catalogServices.join(', ')}. Solo ofrece estos servicios o productos.` 
+      : "";
+    const fullPrompt = (businessData?.aiPromptContext || "Eres un asistente virtual amable.") + catalogContext;
+
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, { role: "user", content: userMsg }],
-          systemPrompt: businessData?.aiPromptContext || "Eres un asistente virtual amable."
+          systemPrompt: fullPrompt // Pasamos el prompt enriquecido con el catálogo
         })
       });
       const data = await res.json();
@@ -134,7 +140,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
       setIsTyping(false);
     }
   };
-
   const bName = businessData?.businessName || "Cargando...";
   const bgImage = businessData?.brandSettings?.backgroundUrl || "";
   const primaryColor = businessData?.brandSettings?.primaryColor || "#009EE3";

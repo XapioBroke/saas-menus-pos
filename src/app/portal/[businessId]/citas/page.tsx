@@ -2,8 +2,8 @@
 
 import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar as CalendarIcon, Clock, User, CheckCircle2, XCircle, ArrowLeft, PhoneCall, Plus, X, Phone, Scissors } from "lucide-react";
-import { collection, query, where, getDocs, doc, updateDoc, addDoc } from "firebase/firestore";
+import { Calendar as CalendarIcon, Clock, User, CheckCircle2, XCircle, ArrowLeft, PhoneCall, Plus, X, Phone, Scissors, Utensils, ShoppingBag, Briefcase } from "lucide-react";
+import { collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
 
@@ -30,7 +30,8 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
   const [showAddModal, setShowAddModal] = useState(false);
   const [newClientName, setNewClientName] = useState("");
   const [newPhone, setNewPhone] = useState("");
-  const [newService, setNewService] = useState("Corte Clásico");
+  const [newService, setNewService] = useState(""); 
+  const [businessType, setBusinessType] = useState("servicios"); 
   const [newTime, setNewTime] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
@@ -41,6 +42,13 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
   const fetchAppointments = async () => {
     setLoading(true);
     try {
+      // 1. Obtener giro del negocio para el ícono dinámico del modal
+      const bizSnap = await getDoc(doc(db, "businesses", businessId));
+      if (bizSnap.exists()) {
+        setBusinessType(bizSnap.data().businessType || "servicios");
+      }
+
+      // 2. Obtener citas del día
       const q = query(collection(db, "appointments"), where("businessId", "==", businessId), where("date", "==", selectedDate));
       const querySnapshot = await getDocs(q);
       const data: Appointment[] = [];
@@ -66,7 +74,7 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
   // Lógica para agregar cita manualmente (Dueño)
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newClientName || !newTime) return;
+    if (!newClientName || !newTime || !newService) return;
 
     setIsAdding(true);
     try {
@@ -89,7 +97,7 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
       
       // Limpiar y cerrar
       setShowAddModal(false);
-      setNewClientName(""); setNewPhone(""); setNewTime("");
+      setNewClientName(""); setNewPhone(""); setNewService(""); setNewTime("");
     } catch (error) {
       console.error("Error agregando cita:", error);
     } finally {
@@ -178,7 +186,7 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
                   <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nombre del Cliente</label>
                   <div className="relative">
                     <User className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />
-                    <input type="text" required value={newClientName} onChange={e => setNewClientName(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-12 pr-4 text-sm text-white outline-none focus:border-[#009EE3]" />
+                    <input type="text" required value={newClientName} onChange={e => setNewClientName(e.target.value)} placeholder="Ej. Juan Pérez" className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-12 pr-4 text-sm text-white outline-none focus:border-[#009EE3]" />
                   </div>
                 </div>
                 
@@ -186,16 +194,19 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
                   <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Teléfono (Opcional)</label>
                   <div className="relative">
                     <Phone className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />
-                    <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-12 pr-4 text-sm text-white outline-none focus:border-[#009EE3]" />
+                    <input type="tel" value={newPhone} onChange={e => setNewPhone(e.target.value)} placeholder="Ej. 3312345678" className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-12 pr-4 text-sm text-white outline-none focus:border-[#009EE3]" />
                   </div>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Servicio</label>
+                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Servicio / Motivo</label>
                     <div className="relative">
-                      <Scissors className="absolute left-3 top-3.5 w-4 h-4 text-[#A1A1AA]" />
-                      <input type="text" value={newService} onChange={e => setNewService(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-9 pr-2 text-sm text-white outline-none focus:border-[#009EE3]" />
+                      {businessType === 'gastronomia' ? <Utensils className="absolute left-3 top-3.5 w-4 h-4 text-[#A1A1AA]" /> : 
+                       businessType === 'retail' ? <ShoppingBag className="absolute left-3 top-3.5 w-4 h-4 text-[#A1A1AA]" /> : 
+                       businessType === 'servicios' ? <Scissors className="absolute left-3 top-3.5 w-4 h-4 text-[#A1A1AA]" /> : 
+                       <Briefcase className="absolute left-3 top-3.5 w-4 h-4 text-[#A1A1AA]" />}
+                      <input type="text" required value={newService} onChange={e => setNewService(e.target.value)} placeholder={businessType === 'gastronomia' ? "Ej. Mesa para 2" : "Ej. Corte Clásico"} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3 pl-9 pr-2 text-sm text-white outline-none focus:border-[#009EE3]" />
                     </div>
                   </div>
                   <div className="space-y-1.5">

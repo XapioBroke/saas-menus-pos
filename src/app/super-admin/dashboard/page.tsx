@@ -47,6 +47,9 @@ export default function SuperAdminDashboard() {
     backgroundUrl: PREMIUM_BACKGROUNDS[0].src,
     logoUrl: ""
   });
+  
+  // Estado para el Catálogo Inicial
+  const [catalog, setCatalog] = useState([{ name: "", description: "", price: "" }]);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -131,13 +134,24 @@ export default function SuperAdminDashboard() {
         requiresPinChange: true
       });
 
+      // Guardar el Catálogo Inicial
       const menuRef = doc(db, "menus", form.businessId);
-      batch.set(menuRef, { catalog: [] });
+      const formattedCatalog = catalog
+        .filter(item => item.name.trim() !== "") // Ignorar filas vacías
+        .map((item, index) => ({
+          id: `item-${Date.now()}-${index}`,
+          name: item.name,
+          description: item.description,
+          price: parseFloat(item.price) || 0,
+          imageUrl: ""
+        }));
+      batch.set(menuRef, { catalog: formattedCatalog });
 
       await batch.commit();
       
       alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}\nPIN Temporal: ${tempPin}`);
       setForm({ ...form, businessName: "", businessId: "", phone: "", logoUrl: "" }); 
+      setCatalog([{ name: "", description: "", price: "" }]); // Reiniciar catálogo
       setActiveTab("list");
       fetchBusinesses();
     } catch (error) {
@@ -333,9 +347,47 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
+              {/* Bloque 3: Catálogo Inicial */}
+              <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
+                <div className="flex justify-between items-center border-b border-[#27272A] pb-4">
+                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                    <Building2 className="w-5 h-5 text-[#009EE3]" /> 3. Catálogo Inicial
+                  </h2>
+                  <button 
+                    type="button" 
+                    onClick={() => setCatalog([...catalog, { name: "", description: "", price: "" }])}
+                    className="text-xs bg-[#009EE3]/20 text-[#009EE3] px-3 py-1.5 rounded-lg font-bold hover:bg-[#009EE3]/30 transition-colors"
+                  >
+                    + Agregar Producto
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  {catalog.map((item, index) => (
+                    <div key={index} className="grid grid-cols-12 gap-3 items-start bg-[#27272A]/20 p-4 rounded-2xl border border-[#27272A]">
+                      <div className="col-span-12 md:col-span-5">
+                        <input type="text" placeholder="Nombre (Ej. Hamburguesa Doble)" value={item.name} onChange={(e) => { const newCat = [...catalog]; newCat[index].name = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+                      </div>
+                      <div className="col-span-12 md:col-span-4">
+                        <input type="text" placeholder="Descripción breve" value={item.description} onChange={(e) => { const newCat = [...catalog]; newCat[index].description = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+                      </div>
+                      <div className="col-span-10 md:col-span-2">
+                        <input type="number" placeholder="Precio $" value={item.price} onChange={(e) => { const newCat = [...catalog]; newCat[index].price = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+                      </div>
+                      <div className="col-span-2 md:col-span-1 flex justify-end">
+                        <button type="button" onClick={() => setCatalog(catalog.filter((_, i) => i !== index))} className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-colors">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Bloque 4: Inteligencia Artificial */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 3. Inteligencia Artificial
+                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 4. Inteligencia Artificial
                 </h2>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Instrucciones Base para el Bot</label>
