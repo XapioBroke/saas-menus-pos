@@ -9,6 +9,13 @@ export default function SuperAdminLogin() {
   const router = useRouter();
   const [passcode, setPasscode] = useState("");
   const [error, setError] = useState(false);
+// Y en tu Título/Logo agregas:
+<h1 
+  onClick={(e) => e.detail === 3 && router.push('/super-admin/dashboard')} 
+  className="cursor-default select-none"
+>
+  MiTerminal
+</h1>
 
   // Define aquí tu código secreto exclusivo de Super-Admin (puedes cambiarlo cuando quieras)
   const MASTER_PIN = "7777"; 

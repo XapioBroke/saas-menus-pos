@@ -2,10 +2,11 @@
 
 import { useState, useEffect, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Calendar as CalendarIcon, Clock, User, CheckCircle2, XCircle, ArrowLeft, PhoneCall, Plus, X, Phone, Scissors, Utensils, ShoppingBag, Briefcase } from "lucide-react";
+import { Calendar as CalendarIcon, Clock, User, CheckCircle2, XCircle, ArrowLeft, PhoneCall, Plus, X, Phone, Scissors, Utensils, ShoppingBag, Briefcase, CreditCard, QrCode, ExternalLink } from "lucide-react";
 import { collection, query, where, getDocs, doc, updateDoc, addDoc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 interface Appointment {
   id: string;
@@ -20,6 +21,7 @@ interface Appointment {
 export default function ConciergeAppointments({ params }: { params: Promise<{ businessId: string }> }) {
   const resolvedParams = use(params);
   const businessId = resolvedParams.businessId;
+  const router = useRouter();
 
   const todayStr = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState(todayStr);
@@ -35,6 +37,12 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
   const [newTime, setNewTime] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
+  // --- ESTADOS PARA COBROS CON MERCADO PAGO ---
+  const [apptToCharge, setApptToCharge] = useState<Appointment | null>(null);
+  const [chargeAmount, setChargeAmount] = useState("");
+  const [isGeneratingPayment, setIsGeneratingPayment] = useState(false);
+  const [paymentUrl, setPaymentUrl] = useState("");
+
   useEffect(() => {
     fetchAppointments();
   }, [businessId, selectedDate]);
@@ -42,13 +50,11 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
   const fetchAppointments = async () => {
     setLoading(true);
     try {
-      // 1. Obtener giro del negocio para el ícono dinámico del modal
       const bizSnap = await getDoc(doc(db, "businesses", businessId));
       if (bizSnap.exists()) {
         setBusinessType(bizSnap.data().businessType || "servicios");
       }
 
-      // 2. Obtener citas del día
       const q = query(collection(db, "appointments"), where("businessId", "==", businessId), where("date", "==", selectedDate));
       const querySnapshot = await getDocs(q);
       const data: Appointment[] = [];
@@ -71,7 +77,6 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
     }
   };
 
-  // Lógica para agregar cita manualmente (Dueño)
   const handleManualAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newClientName || !newTime || !newService) return;
@@ -83,25 +88,58 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
         clientName: newClientName,
         phone: newPhone || "No proporcionado",
         serviceName: newService,
-        date: selectedDate, // Se agenda en la fecha que está viendo
+        date: selectedDate,
         time: newTime,
-        status: "confirmed", // Como la agrega el dueño, ya entra confirmada
+        status: "confirmed",
         createdAt: new Date().toISOString()
       };
 
       const docRef = await addDoc(collection(db, "appointments"), newAppt);
-      
-      // Actualizar UI instantáneamente
       const addedAppt = { id: docRef.id, ...newAppt } as Appointment;
       setAppointments(prev => [...prev, addedAppt].sort((a, b) => a.time.localeCompare(b.time)));
       
-      // Limpiar y cerrar
       setShowAddModal(false);
       setNewClientName(""); setNewPhone(""); setNewService(""); setNewTime("");
     } catch (error) {
       console.error("Error agregando cita:", error);
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  // LÓGICA DE COBRO
+  const handleGenerateCharge = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!apptToCharge || !chargeAmount) return;
+
+    setIsGeneratingPayment(true);
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          businessId,
+          referenceId: apptToCharge.id,
+          items: [{
+            name: `Servicio: ${apptToCharge.serviceName} - ${apptToCharge.clientName}`,
+            price: parseFloat(chargeAmount),
+            quantity: 1
+          }]
+        })
+      });
+
+      const data = await res.json();
+      
+      if (data.init_point) {
+        setPaymentUrl(data.init_point);
+      } else {
+        alert(data.error || "Error al generar el link. ¿Configuraste el Token de Mercado Pago en el portal?");
+      }
+    } catch (error) {
+      console.error("Error de cobro:", error);
+      alert("Error de conexión al cobrar.");
+    } finally {
+      setIsGeneratingPayment(false);
     }
   };
 
@@ -113,7 +151,13 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
           <Link href={`/portal/${businessId}`} className="w-10 h-10 rounded-full bg-[#18181B] border border-[#27272A] flex items-center justify-center text-[#A1A1AA] hover:text-white transition-colors">
             <ArrowLeft className="w-5 h-5" />
           </Link>
-          <h1 className="text-lg font-bold tracking-tight text-white">Agenda del Día</h1>
+          {/* PROTOCOLO FANTASMA: Triple clic aquí lleva al Super Admin */}
+          <h1 
+            onClick={(e) => e.detail === 3 && router.push('/super-admin/dashboard')}
+            className="text-lg font-bold tracking-tight text-white cursor-default select-none"
+          >
+            Agenda del Día
+          </h1>
           <div className="w-10" /> 
         </header>
 
@@ -135,7 +179,7 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
             <div className="bg-[#18181B]/50 border border-[#27272A] rounded-3xl p-10 text-center space-y-3">
               <Clock className="w-10 h-10 text-[#A1A1AA] mx-auto opacity-40" />
               <p className="text-white font-semibold">Sin reservas para este día</p>
-              <p className="text-xs text-[#A1A1AA]">Usa el botón "+" abajo para agregar citas manualmente si un cliente te llama.</p>
+              <p className="text-xs text-[#A1A1AA]">Usa el botón "+" abajo para agregar citas manualmente.</p>
             </div>
           ) : (
             <AnimatePresence>
@@ -148,9 +192,18 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
                       <h3 className="text-base font-bold text-white mt-2 tracking-tight flex items-center gap-2"><User className="w-4 h-4 text-[#A1A1AA]" /> {app.clientName}</h3>
                       <p className="text-xs text-[#A1A1AA] mt-0.5 font-medium">{app.serviceName}</p>
                     </div>
-                    {app.phone !== "No proporcionado" && (
-                      <a href={`tel:${app.phone}`} className="w-10 h-10 rounded-2xl bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] flex items-center justify-center transition-colors"><PhoneCall className="w-4 h-4" /></a>
-                    )}
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => { setApptToCharge(app); setPaymentUrl(""); setChargeAmount(""); }} 
+                        className="w-10 h-10 rounded-2xl bg-[#009EE3]/10 border border-[#009EE3]/20 hover:bg-[#009EE3]/20 text-[#009EE3] flex items-center justify-center transition-colors"
+                        title="Cobrar Servicio"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                      </button>
+                      {app.phone !== "No proporcionado" && (
+                        <a href={`tel:${app.phone}`} className="w-10 h-10 rounded-2xl bg-[#27272A] hover:bg-[#A1A1AA]/20 text-[#A1A1AA] flex items-center justify-center transition-colors"><PhoneCall className="w-4 h-4" /></a>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center justify-between pt-3 border-t border-[#27272A] pl-2">
                     <span className={`text-xs font-bold uppercase tracking-wider ${app.status === 'confirmed' ? 'text-emerald-400' : app.status === 'pending' ? 'text-amber-400' : 'text-red-400'}`}>
@@ -171,6 +224,76 @@ export default function ConciergeAppointments({ params }: { params: Promise<{ bu
         <button onClick={() => setShowAddModal(true)} className="fixed bottom-6 right-6 md:right-1/3 lg:right-1/3 w-14 h-14 bg-[#009EE3] hover:bg-[#06B6D4] text-white rounded-full flex items-center justify-center shadow-[0_0_20px_rgba(0,158,227,0.4)] transition-transform hover:scale-105 z-40">
           <Plus className="w-6 h-6" />
         </button>
+
+        {/* MODAL COBRO MERCADO PAGO */}
+        <AnimatePresence>
+          {apptToCharge && (
+            <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-6">
+              <motion.div initial={{ y: 100, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 100, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 rounded-t-[32px] sm:rounded-[32px] w-full max-w-md shadow-2xl">
+                <div className="flex justify-between items-center mb-6">
+                  <h3 className="text-xl font-bold text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-[#009EE3]" /> Cobrar Servicio</h3>
+                  <button onClick={() => setApptToCharge(null)} className="p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white"><X className="w-5 h-5" /></button>
+                </div>
+
+                {!paymentUrl ? (
+                  <form onSubmit={handleGenerateCharge} className="space-y-6">
+                    <div className="bg-[#27272A]/30 p-4 rounded-2xl border border-[#27272A]">
+                      <p className="text-sm text-[#A1A1AA]">Cliente: <span className="text-white font-semibold">{apptToCharge.clientName}</span></p>
+                      <p className="text-sm text-[#A1A1AA]">Servicio: <span className="text-white font-semibold">{apptToCharge.serviceName}</span></p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Monto a Cobrar ($ MXN)</label>
+                      <input 
+                        type="number" 
+                        step="0.01"
+                        required 
+                        autoFocus
+                        value={chargeAmount} 
+                        onChange={e => setChargeAmount(e.target.value)} 
+                        placeholder="Ej. 450.00" 
+                        className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-4 px-4 text-xl font-bold text-center text-white outline-none focus:border-[#009EE3]" 
+                      />
+                    </div>
+
+                    <button type="submit" disabled={isGeneratingPayment} className="w-full py-4 bg-[#009EE3] text-white font-bold rounded-2xl shadow-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2">
+                      {isGeneratingPayment ? "Conectando con Mercado Pago..." : <><QrCode className="w-5 h-5"/> Generar Link / QR</>}
+                    </button>
+                  </form>
+                ) : (
+                  <div className="space-y-6 text-center">
+                    <div className="bg-white p-4 rounded-2xl inline-block shadow-inner mx-auto">
+                      <img 
+                        src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(paymentUrl)}`} 
+                        alt="QR de Pago" 
+                        className="w-48 h-48 object-contain" 
+                      />
+                    </div>
+                    <p className="text-xs text-[#A1A1AA]">El cliente puede escanear este código para pagar, o puedes compartirle el link directo.</p>
+                    
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => window.open(paymentUrl, "_blank")}
+                        className="flex-1 py-3 bg-[#27272A] text-white font-bold rounded-xl text-sm hover:bg-[#3f3f46] transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ExternalLink className="w-4 h-4" /> Abrir Link
+                      </button>
+                      <button 
+                        onClick={() => {
+                          const msg = `Hola ${apptToCharge.clientName}, aquí tienes el link de pago seguro por tu servicio de ${apptToCharge.serviceName}: ${paymentUrl}`;
+                          window.open(`https://wa.me/${apptToCharge.phone !== 'No proporcionado' ? apptToCharge.phone : ''}?text=${encodeURIComponent(msg)}`, "_blank");
+                        }}
+                        className="flex-1 py-3 bg-green-500 text-white font-bold rounded-xl text-sm hover:bg-green-600 transition-colors flex items-center justify-center gap-2"
+                      >
+                        Enviar por WA
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
         {/* MODAL DE CITA MANUAL */}
         {showAddModal && (
