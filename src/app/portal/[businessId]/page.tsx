@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2 } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
@@ -23,6 +23,12 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   // Estados para los Modales de Acción
   const [showQrModal, setShowQrModal] = useState(false);
   const [showSupportModal, setShowSupportModal] = useState(false);
+  const [showPaymentConfigModal, setShowPaymentConfigModal] = useState(false);
+
+  // Estados para Mercado Pago
+  const [mpToken, setMpToken] = useState("");
+  const [isSavingToken, setIsSavingToken] = useState(false);
+  const [tokenSavedMsg, setTokenSavedMsg] = useState(false);
 
   // Estados para el Chat Inteligente de Soporte (Concierge)
   const [supportMessages, setSupportMessages] = useState<{role: string, content: string}[]>([
@@ -38,6 +44,23 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     : "Negocio";
 
   const displayName = dbBusinessName || urlBusinessName;
+
+  // Cargar Token de Mercado Pago al desbloquear
+  useEffect(() => {
+    if (isUnlocked) {
+      const fetchBusinessData = async () => {
+        try {
+          const bizDoc = await getDoc(doc(db, "businesses", businessId));
+          if (bizDoc.exists() && bizDoc.data().mercadopagoAccessToken) {
+            setMpToken(bizDoc.data().mercadopagoAccessToken);
+          }
+        } catch (error) {
+          console.error("Error obteniendo datos del negocio:", error);
+        }
+      };
+      fetchBusinessData();
+    }
+  }, [isUnlocked, businessId]);
 
   // Auto-scroll del chat de soporte
   useEffect(() => {
@@ -127,7 +150,30 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     if (!isVerifying) setPin(prev => prev.slice(0, -1));
   };
 
-  // Lógica del Envío del Chat de Soporte (Llama a tu API Costo $0)
+  // Guardar Token de Mercado Pago
+  const handleSaveMpToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mpToken.trim()) return;
+    
+    setIsSavingToken(true);
+    try {
+      await updateDoc(doc(db, "businesses", businessId), {
+        mercadopagoAccessToken: mpToken.trim()
+      });
+      setTokenSavedMsg(true);
+      setTimeout(() => {
+        setTokenSavedMsg(false);
+        setShowPaymentConfigModal(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Error guardando token:", error);
+      alert("Error al guardar credenciales");
+    } finally {
+      setIsSavingToken(false);
+    }
+  };
+
+  // Lógica del Envío del Chat de Soporte
   const handleSupportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supportInput.trim()) return;
@@ -328,7 +374,25 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </Link>
 
-              {/* BOTÓN 3: SOPORTE CONCIERGE */}
+              {/* BOTÓN 3: CONFIGURACIÓN DE COBROS */}
+              <motion.button 
+                whileHover={{ scale: 0.98 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setShowPaymentConfigModal(true)}
+                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
+                    <CreditCard className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white tracking-tight">Vincular Mercado Pago</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Activar cobros con tarjeta y QR</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* BOTÓN 4: SOPORTE CONCIERGE */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
@@ -348,6 +412,50 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             </div>
 
             {/* --- INYECCIÓN DE MODALES --- */}
+
+            {/* MODAL CONFIGURACIÓN MERCADO PAGO */}
+            <AnimatePresence>
+              {showPaymentConfigModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-md w-full shadow-2xl relative">
+                    <button onClick={() => setShowPaymentConfigModal(false)} className="absolute top-6 right-6 p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                    
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-[#009EE3]/10 p-3 rounded-xl border border-[#009EE3]/20">
+                        <CreditCard className="w-6 h-6 text-[#009EE3]" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Credenciales de Cobro</h3>
+                        <p className="text-xs text-[#A1A1AA]">Conecta tu cuenta de Mercado Pago</p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleSaveMpToken} className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Access Token (Producción)</label>
+                        <input 
+                          type="password" 
+                          required
+                          value={mpToken} 
+                          onChange={(e) => setMpToken(e.target.value)} 
+                          placeholder="APP_USR-..." 
+                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] font-mono transition-colors"
+                        />
+                        <p className="text-[10px] text-[#A1A1AA]">Puedes encontrar este token en tu panel de desarrollador de Mercado Pago.</p>
+                      </div>
+
+                      <button 
+                        type="submit" 
+                        disabled={isSavingToken}
+                        className="w-full py-4 bg-[#009EE3] hover:bg-[#06B6D4] text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2 mt-2"
+                      >
+                        {isSavingToken ? "Verificando y Guardando..." : tokenSavedMsg ? <><CheckCircle2 className="w-4 h-4"/> Guardado con éxito</> : "Guardar Credenciales"}
+                      </button>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             {/* MODAL QR DE RESERVAS / MENÚ */}
             <AnimatePresence>
