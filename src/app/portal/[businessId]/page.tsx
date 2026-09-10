@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink } from "lucide-react";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
@@ -209,7 +209,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
         setSupportMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
       }
       if (data.escalate) {
-        setNeedsHuman(true); // Muestra botón de WhatsApp
+        setNeedsHuman(true);
       }
     } catch (error) {
       setSupportMessages(prev => [...prev, { role: "assistant", content: "Error de conexión. Intenta de nuevo." }]);
@@ -485,7 +485,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             {/* --- INYECCIÓN DE MODALES --- */}
 
-            {/* MODAL INTELIGENTE DE CÓDIGOS QR */}
+            {/* MODAL INTELIGENTE DE CÓDIGOS QR ACTUALIZADO */}
             <AnimatePresence>
               {qrConfig.isOpen && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-6">
@@ -505,13 +505,22 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      {/* NUEVO BOTÓN: VISTA PREVIA DEL CLIENTE */}
+                      <button 
+                        onClick={() => window.open(qrConfig.type === 'reservas' ? `/reservas/${businessId}` : `/menu/${businessId}`, "_blank")}
+                        className="w-full py-3 bg-[#009EE3]/10 text-[#009EE3] border border-[#009EE3]/20 font-bold rounded-xl text-sm hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <ExternalLink className="w-4 h-4" /> Ver {qrConfig.type === 'reservas' ? 'Reservas' : 'Catálogo'} como Cliente
+                      </button>
+                      
                       <button 
                         onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}&margin=20`, "_blank")}
                         className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity"
                       >
                         Descargar QR para Imprimir
                       </button>
+                      
                       <button 
                         onClick={() => setQrConfig({ isOpen: false, type: 'reservas' })}
                         className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors"
@@ -616,7 +625,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                         type="text" 
                         value={supportInput} 
                         onChange={e => setSupportInput(e.target.value)} 
-                        placeholder="Ej. ¿Cómo imprimo mi QR?" 
+                        placeholder="Ej. Quiero actualizar el precio de mi hamburguesa" 
                         className="flex-1 bg-[#27272A] text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-[#009EE3] transition-all" 
                       />
                       <button 
