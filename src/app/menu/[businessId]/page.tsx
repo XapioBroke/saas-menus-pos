@@ -22,6 +22,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   const [businessData, setBusinessData] = useState<any>(null);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   // Estados del Chatbot de Ventas (IA de OpenAI)
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -33,7 +34,7 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Cargar configuración visual y prompt del negocio
+        // 1. Cargar configuración visual del negocio
         const bizRef = doc(db, "businesses", businessId);
         const bizSnap = await getDoc(bizRef);
         
@@ -44,20 +45,52 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
             role: "assistant", 
             content: `¡Hola! Soy el asistente virtual de ${data.businessName}. ¿Qué se te antoja hoy o qué buscas?` 
           }]);
+          
+          let loadedItems: CatalogItem[] = [];
+          
+
+          // ESTRATEGIA A: Buscar en la colección separada "menus" (Formato Super-Admin)
+          const menuRef = doc(db, "menus", businessId);
+          const menuSnap = await getDoc(menuRef);
+          if (menuSnap.exists() && menuSnap.data().catalog) {
+            loadedItems = menuSnap.data().catalog;
+          }
+
+          // ESTRATEGIA B: Si no hay nada, buscar dentro del mismo documento del negocio (Formato Onboarding alternativo)
+          if (loadedItems.length === 0 && data.catalog) {
+            loadedItems = data.catalog;
+          } else if (loadedItems.length === 0 && data.products) {
+            loadedItems = data.products;
+          }
+
+          // ESTRATEGIA C: Buscar en una subcolección (Para arquitecturas escalables complejas)
+          if (loadedItems.length === 0) {
+            const { collection, getDocs } = await import("firebase/firestore");
+            const subColSnap = await getDocs(collection(db, "businesses", businessId, "products"));
+            if (!subColSnap.empty) {
+              subColSnap.forEach(doc => {
+                loadedItems.push({ id: doc.id, ...doc.data() } as CatalogItem);
+              });
+            }
+          }
+
+          // FILTRO DE SEGURIDAD (Tier 1): Eliminar productos "fantasma" que no tengan nombre
+          const validItems = loadedItems.filter(item => item.name && item.name.trim() !== "");
+          setCatalogItems(validItems);
+
+        } else {
+          setNotFound(true);
+          setLoading(false);
+          return;
         }
 
-        // 2. Cargar el catálogo/menú
-        const menuRef = doc(db, "menus", businessId);
-        const menuSnap = await getDoc(menuRef);
-        if (menuSnap.exists() && menuSnap.data().catalog) {
-          setCatalogItems(menuSnap.data().catalog);
-        }
       } catch (error) {
         console.error("Error cargando plataforma:", error);
       } finally {
         setLoading(false);
       }
     };
+    
     if (businessId) fetchData();
   }, [businessId]);
 
