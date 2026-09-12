@@ -48,8 +48,8 @@ export default function SuperAdminDashboard() {
     logoUrl: ""
   });
   
-  // Estado para el Catálogo Inicial
-  const [catalog, setCatalog] = useState([{ name: "", description: "", price: "" }]);
+  // Estado para el Catálogo Inicial (ahora incluye imageUrl)
+  const [catalog, setCatalog] = useState([{ name: "", description: "", price: "", imageUrl: "" }]);
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -100,6 +100,20 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // Lector de Imágenes para los Artículos del Catálogo
+  const handleCatalogImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const newCat = [...catalog];
+        newCat[index].imageUrl = reader.result as string;
+        setCatalog(newCat);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
   const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.businessId || !form.businessName || !form.phone) {
@@ -143,7 +157,7 @@ export default function SuperAdminDashboard() {
           name: item.name,
           description: item.description,
           price: parseFloat(item.price) || 0,
-          imageUrl: ""
+          imageUrl: item.imageUrl || "" // Guardar la imagen en Firebase
         }));
       batch.set(menuRef, { catalog: formattedCatalog });
 
@@ -151,7 +165,7 @@ export default function SuperAdminDashboard() {
       
       alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}\nPIN Temporal: ${tempPin}`);
       setForm({ ...form, businessName: "", businessId: "", phone: "", logoUrl: "" }); 
-      setCatalog([{ name: "", description: "", price: "" }]); // Reiniciar catálogo
+      setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); // Reiniciar catálogo
       setActiveTab("list");
       fetchBusinesses();
     } catch (error) {
@@ -245,7 +259,6 @@ export default function SuperAdminDashboard() {
                         <button onClick={() => window.open(`/reservas/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
                           <ExternalLink className="w-3.5 h-3.5" /> Reservas
                         </button>
-                        {/* BOTÓN DE LLAVE QR INYECTADO AQUÍ */}
                         <button 
                           onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(`https://miterminal.com/portal/${biz.id}`)}`, "_blank")} 
                           className="px-3 py-2 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
@@ -367,7 +380,7 @@ export default function SuperAdminDashboard() {
                   </h2>
                   <button 
                     type="button" 
-                    onClick={() => setCatalog([...catalog, { name: "", description: "", price: "" }])}
+                    onClick={() => setCatalog([...catalog, { name: "", description: "", price: "", imageUrl: "" }])}
                     className="text-xs bg-[#009EE3]/20 text-[#009EE3] px-3 py-1.5 rounded-lg font-bold hover:bg-[#009EE3]/30 transition-colors"
                   >
                     + Agregar Producto
@@ -377,17 +390,33 @@ export default function SuperAdminDashboard() {
                 <div className="space-y-4">
                   {catalog.map((item, index) => (
                     <div key={index} className="grid grid-cols-12 gap-3 items-start bg-[#27272A]/20 p-4 rounded-2xl border border-[#27272A]">
-                      <div className="col-span-12 md:col-span-5">
-                        <input type="text" placeholder="Nombre (Ej. Hamburguesa Doble)" value={item.name} onChange={(e) => { const newCat = [...catalog]; newCat[index].name = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+                      
+                      {/* Subir Imagen del Producto */}
+                      <div className="col-span-12 sm:col-span-2 md:col-span-1 flex justify-center h-full">
+                        <label className="cursor-pointer w-full aspect-square bg-[#009EE3]/10 text-[#009EE3] rounded-xl hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center relative overflow-hidden border border-[#009EE3]/20" title="Subir Foto del Producto">
+                          {item.imageUrl ? (
+                            <img src={item.imageUrl} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
+                          ) : (
+                            <ImageIcon className="w-5 h-5" />
+                          )}
+                          <input type="file" accept="image/*" className="hidden" onChange={(e) => handleCatalogImageUpload(index, e)} />
+                        </label>
                       </div>
-                      <div className="col-span-12 md:col-span-4">
-                        <input type="text" placeholder="Descripción breve" value={item.description} onChange={(e) => { const newCat = [...catalog]; newCat[index].description = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+
+                      {/* Datos del Producto */}
+                      <div className="col-span-12 sm:col-span-10 md:col-span-4 h-full">
+                        <input type="text" placeholder="Nombre del artículo" value={item.name} onChange={(e) => { const newCat = [...catalog]; newCat[index].name = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors h-full" />
                       </div>
-                      <div className="col-span-10 md:col-span-2">
-                        <input type="number" placeholder="Precio $" value={item.price} onChange={(e) => { const newCat = [...catalog]; newCat[index].price = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors" />
+                      <div className="col-span-12 md:col-span-4 h-full">
+                        <input type="text" placeholder="Descripción breve" value={item.description} onChange={(e) => { const newCat = [...catalog]; newCat[index].description = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors h-full" />
                       </div>
-                      <div className="col-span-2 md:col-span-1 flex justify-end">
-                        <button type="button" onClick={() => setCatalog(catalog.filter((_, i) => i !== index))} className="p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-colors">
+                      <div className="col-span-10 md:col-span-2 h-full">
+                        <input type="number" placeholder="Precio $" value={item.price} onChange={(e) => { const newCat = [...catalog]; newCat[index].price = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors h-full" />
+                      </div>
+                      
+                      {/* Borrar */}
+                      <div className="col-span-2 md:col-span-1 flex justify-end h-full">
+                        <button type="button" onClick={() => setCatalog(catalog.filter((_, i) => i !== index))} className="w-full p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-colors flex items-center justify-center h-full">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>

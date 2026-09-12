@@ -168,9 +168,13 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
         {/* Cabecera de Marca */}
         <div className="text-center space-y-4 mb-12">
           {businessData?.brandSettings?.logoUrl ? (
-            <img src={businessData.brandSettings.logoUrl} alt="Logo" className="w-24 h-24 object-contain mx-auto rounded-2xl bg-white/5 p-2 backdrop-blur-md border border-white/10 shadow-2xl" />
+            <div className="w-28 h-28 mx-auto rounded-full bg-white/5 p-1 backdrop-blur-md border border-white/20 shadow-[0_0_30px_rgba(0,0,0,0.3)] flex items-center justify-center overflow-hidden">
+              <div className="w-full h-full rounded-full overflow-hidden bg-white flex items-center justify-center">
+                <img src={businessData.brandSettings.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+              </div>
+            </div>
           ) : (
-            <div className="w-24 h-24 mx-auto rounded-2xl bg-[#27272A] flex items-center justify-center border border-white/10 shadow-2xl">
+            <div className="w-28 h-28 mx-auto rounded-full bg-[#27272A] flex items-center justify-center border border-white/10 shadow-2xl">
               {businessType === 'gastronomia' ? <Utensils className="w-10 h-10 text-[#A1A1AA]" /> : <ShoppingBag className="w-10 h-10 text-[#A1A1AA]" />}
             </div>
           )}
