@@ -121,14 +121,23 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
     setIsTyping(true);
 
     try {
+      // 🧠 SERIALIZADOR TIER 1: Convertimos el catálogo visual en memoria para la IA
+      const catalogContext = catalogItems.length > 0 
+        ? catalogItems.map(item => `- ${item.name}: $${item.price} ${item.description ? `(${item.description})` : ''}`).join('\n')
+        : "El catálogo está vacío en este momento.";
+
+      // Unimos las instrucciones del dueño con el catálogo en tiempo real
+      const dynamicSystemPrompt = `${businessData?.aiPromptContext || "Eres un mesero y vendedor experto."}\n\n=== MENÚ / CATÁLOGO DISPONIBLE ===\n${catalogContext}\n====================================\nUsa esta información para recomendar y responder dudas precisas sobre los productos y precios.`;
+
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, { role: "user", content: userMsg }],
-          systemPrompt: businessData?.aiPromptContext || "Eres un mesero y vendedor experto."
+          systemPrompt: dynamicSystemPrompt // <--- Mandamos el cerebro ya cargado
         })
       });
+      
       const data = await res.json();
       if (data.reply) {
         setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);

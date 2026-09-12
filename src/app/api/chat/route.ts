@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 
 export async function POST(req: Request) {
   try {
-    const { messages, businessName, menuCatalog, aiPrompt } = await req.json();
+    // 1. Recibimos el systemPrompt dinámico que inyectamos desde el Frontend
+    const { messages, systemPrompt } = await req.json();
 
     // Validación de seguridad de la llave
     if (!process.env.OPENAI_API_KEY) {
@@ -12,24 +13,24 @@ export async function POST(req: Request) {
       );
     }
 
-    // Arquitectura del System Prompt (El cerebro del asistente)
+    // 2. Arquitectura Tier 1: Fusión de Contexto + Reglas Duras
+    // Tomamos el menú y configuración del cliente, y le blindamos las reglas de negocio
+    const finalSystemContent = `
+${systemPrompt || 'Eres un asistente virtual experto en ventas.'}
+
+=== REGLAS OPERATIVAS ESTRICTAS (PRIORIDAD ALTA) ===
+1. Responde de forma amable, persuasiva, concisa y muy natural (como un humano en WhatsApp).
+2. NO INVENTES precios, ni productos, ni promociones que no estén en el menú proporcionado arriba. Si no está en la lista, di cortésmente que no lo manejan.
+3. Tu objetivo es resolver dudas y guiar al cliente sutilmente para que agregue productos a su carrito en la plataforma.
+4. Si preguntan sobre métodos de pago, indica claramente que aceptan Efectivo, Tarjeta (mediante Terminal) o Link de Mercado Pago directo en el carrito.
+    `;
+
     const systemMessage = {
       role: "system",
-      content: `Eres el asistente virtual exclusivo y experto en ventas de ${businessName}.
-      
-      ${aiPrompt ? `Instrucciones clave del dueño: ${aiPrompt}` : ''}
-      
-      Aquí tienes el catálogo/menú en tiempo real:
-      ${JSON.stringify(menuCatalog)}
-      
-      Reglas operativas:
-      1. Responde de forma amable, persuasiva, concisa y muy natural.
-      2. No inventes precios ni productos que no estén en el menú proporcionado.
-      3. Tu objetivo es resolver dudas y guiar al cliente sutilmente para que agregue productos a su carrito y finalice la compra.
-      4. Si preguntan sobre métodos de pago, indica que aceptan Efectivo, Tarjeta (Terminal) o Link de Mercado Pago directo en el carrito.`
+      content: finalSystemContent
     };
 
-    // Llamada directa a la API de OpenAI (Evita problemas de dependencias en Vercel)
+    // 3. Llamada directa a la API de OpenAI
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -37,7 +38,7 @@ export async function POST(req: Request) {
         'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini', // Modelo rápido y económico para operaciones de alto volumen
+        model: 'gpt-4o-mini', // Modelo rápido y económico perfecto para este caso
         messages: [systemMessage, ...messages],
         temperature: 0.7,
         max_tokens: 250
