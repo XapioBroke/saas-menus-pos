@@ -34,12 +34,17 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   useEffect(() => {
     const fetchData = async () => {
       try {
+        console.log("=== DIAGNÓSTICO TIER 1 INICIADO ===");
+        console.log("ID buscado:", businessId);
+
         // 1. Cargar configuración visual del negocio
         const bizRef = doc(db, "businesses", businessId);
         const bizSnap = await getDoc(bizRef);
         
         if (bizSnap.exists()) {
           const data = bizSnap.data();
+          console.log("1. Datos encontrados en colección 'businesses':", data);
+          
           setBusinessData(data);
           setMessages([{ 
             role: "assistant", 
@@ -47,35 +52,39 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
           }]);
           
           let loadedItems: CatalogItem[] = [];
-          
 
-          // ESTRATEGIA A: Buscar en la colección separada "menus" (Formato Super-Admin)
+          // ESTRATEGIA A: Buscar en la colección "menus"
           const menuRef = doc(db, "menus", businessId);
           const menuSnap = await getDoc(menuRef);
-          if (menuSnap.exists() && menuSnap.data().catalog) {
-            loadedItems = menuSnap.data().catalog;
+          if (menuSnap.exists()) {
+            console.log("2. Datos encontrados en colección 'menus':", menuSnap.data());
+            if (menuSnap.data().catalog) {
+              loadedItems = menuSnap.data().catalog;
+            }
+          } else {
+            console.log("2. ADVERTENCIA: No existe documento en la colección 'menus'.");
           }
 
-          // ESTRATEGIA B: Si no hay nada, buscar dentro del mismo documento del negocio (Formato Onboarding alternativo)
+          // ESTRATEGIA B: Buscar dentro del documento del negocio
           if (loadedItems.length === 0 && data.catalog) {
+            console.log("3. Productos encontrados dentro de 'businesses' (campo catalog).");
             loadedItems = data.catalog;
           } else if (loadedItems.length === 0 && data.products) {
+            console.log("3. Productos encontrados dentro de 'businesses' (campo products).");
             loadedItems = data.products;
           }
 
-          // ESTRATEGIA C: Buscar en una subcolección (Para arquitecturas escalables complejas)
-          if (loadedItems.length === 0) {
-            const { collection, getDocs } = await import("firebase/firestore");
-            const subColSnap = await getDocs(collection(db, "businesses", businessId, "products"));
-            if (!subColSnap.empty) {
-              subColSnap.forEach(doc => {
-                loadedItems.push({ id: doc.id, ...doc.data() } as CatalogItem);
-              });
-            }
-          }
+          console.log("4. Arreglo crudo antes de filtrar:", loadedItems);
 
-          // FILTRO DE SEGURIDAD (Tier 1): Eliminar productos "fantasma" que no tengan nombre
-          const validItems = loadedItems.filter(item => item.name && item.name.trim() !== "");
+          // FILTRO DE SEGURIDAD (Tier 1): Eliminar productos "fantasma"
+          // NOTA: Revisa si tu base de datos usa "name", "nombre", "title", etc.
+          const validItems = loadedItems.filter(item => {
+             // Imprimimos cada item para ver qué llaves tiene
+             console.log("Revisando item:", item);
+             return item.name && item.name.trim() !== "";
+          });
+
+          console.log("5. Arreglo final después de filtrar:", validItems);
           setCatalogItems(validItems);
 
         } else {
