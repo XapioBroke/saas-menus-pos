@@ -5,7 +5,7 @@ import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Link as LinkIcon } from "lucide-react";
+import { CheckCircle2, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -37,7 +37,7 @@ function OnboardingContent() {
   
   const [aiPrompt, setAiPrompt] = useState("");
   const [catalog, setCatalog] = useState([
-    { categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true }] }
+    { categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }
   ]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
@@ -71,7 +71,7 @@ function OnboardingContent() {
             if (menuData.catalog && menuData.catalog.length > 0) {
               setCatalog(menuData.catalog.map((cat: any) => ({
                 categoryId: generateId(), categoryName: cat.category,
-                items: cat.items.map((item: any) => ({ ...item, id: item.id || generateId() }))
+                items: cat.items.map((item: any) => ({ ...item, id: item.id || generateId(), imageUrl: item.imageUrl || "" }))
               })));
             }
           }
@@ -106,9 +106,21 @@ function OnboardingContent() {
   const addCategory = () => setCatalog([...catalog, { categoryId: generateId(), categoryName: "", items: [] }]);
   const removeCategory = (index: number) => { const n = [...catalog]; n.splice(index, 1); setCatalog(n); };
   const updateCategoryName = (txt: string, i: number) => { const n = [...catalog]; n[i].categoryName = txt; setCatalog(n); };
-  const addItem = (i: number) => { const n = [...catalog]; n[i].items.push({ id: generateId(), name: "", price: "", description: "", available: true }); setCatalog(n); };
+  const addItem = (i: number) => { const n = [...catalog]; n[i].items.push({ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }); setCatalog(n); };
   const removeItem = (cIdx: number, iIdx: number) => { const n = [...catalog]; n[cIdx].items.splice(iIdx, 1); setCatalog(n); };
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const n = [...catalog]; n[cIdx].items[iIdx] = { ...n[cIdx].items[iIdx], [field]: val }; setCatalog(n); };
+
+  // Lector de Imágenes para los Artículos del Catálogo (Base64)
+  const handleCatalogImageUpload = (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        updateItem(cIdx, iIdx, 'imageUrl', reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -152,11 +164,15 @@ function OnboardingContent() {
       };
       batch.set(businessRef, payload, { merge: true });
 
-      // 2. Guardado de Catálogo
+      // 2. Guardado de Catálogo (incluyendo imageUrl)
       const menuRef = doc(db, "menus", businessId);
       const cleanCatalog = catalog.map(sec => ({
         category: sec.categoryName || "Sin Categoría",
-        items: sec.items.map(item => ({ ...item, price: Number(item.price) || 0 }))
+        items: sec.items.map(item => ({ 
+          ...item, 
+          price: Number(item.price) || 0,
+          imageUrl: item.imageUrl || "" 
+        }))
       }));
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
@@ -212,7 +228,7 @@ function OnboardingContent() {
             </button>
             <button onClick={() => { 
               setSuccessLink(""); setBusinessName(""); setBusinessId(""); setBusinessPhone(""); 
-              setCatalog([{ categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true }] }]);
+              setCatalog([{ categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }]);
             }} className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors">
               Crear Otro
             </button>
@@ -316,12 +332,29 @@ function OnboardingContent() {
             <div className="space-y-6">
               {catalog.map((cat, catIndex) => (
                 <div key={cat.categoryId} className="p-6 bg-gray-50 border border-gray-200 rounded-2xl relative">
-                  <button type="button" onClick={() => removeCategory(catIndex)} className="absolute top-4 right-4 text-red-500 text-sm font-black bg-red-50 px-3 py-1 rounded-lg">X Eliminar</button>
+                  <button type="button" onClick={() => removeCategory(catIndex)} className="absolute top-4 right-4 text-red-500 text-sm font-black bg-red-50 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">X Eliminar</button>
                   <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas, Celulares)" className="text-gray-900 placeholder-gray-400 bg-transparent font-bold text-lg outline-none mb-4 w-3/4 border-b border-gray-300 pb-1 focus:border-blue-500" />
                   
                   <div className="space-y-3">
                     {cat.items.map((item, itemIndex) => (
-                      <div key={item.id} className="flex flex-col md:flex-row gap-3 bg-white p-4 rounded-xl border border-gray-100 items-center">
+                      <div key={item.id} className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 items-start md:items-center">
+                        
+                        {/* Subir Imagen del Producto */}
+                        <div className="shrink-0 w-full md:w-24 h-32 md:h-24 flex justify-center">
+                          <label className="cursor-pointer w-full h-full bg-blue-50 text-blue-500 rounded-xl hover:bg-blue-100 transition-colors flex items-center justify-center relative overflow-hidden border border-blue-100 shadow-sm" title="Subir Foto del Producto">
+                            {item.imageUrl ? (
+                              <img src={item.imageUrl} alt="preview" className="absolute inset-0 w-full h-full object-cover" />
+                            ) : (
+                              <div className="flex flex-col items-center gap-1 opacity-70">
+                                <ImageIcon className="w-6 h-6" />
+                                <span className="text-[10px] font-bold">Añadir Foto</span>
+                              </div>
+                            )}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleCatalogImageUpload(catIndex, itemIndex, e)} />
+                          </label>
+                        </div>
+
+                        {/* Campos del Producto */}
                         <div className="flex-1 space-y-3 w-full">
                           <div className="flex items-center gap-3 w-full">
                             <input 
@@ -329,7 +362,7 @@ function OnboardingContent() {
                               value={item.name} 
                               onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} 
                               placeholder="Producto" 
-                              className="text-gray-900 placeholder-gray-400 flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-green-100 font-medium" 
+                              className="text-gray-900 placeholder-gray-400 flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-green-100 font-medium border border-transparent focus:border-green-200 transition-all" 
                             />
                             
                             <div className="relative ml-auto shrink-0">
@@ -343,10 +376,10 @@ function OnboardingContent() {
                               />
                             </div>
                           </div>
-                          <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400 w-full p-2 bg-gray-50 rounded-lg outline-none text-sm" />
+                          <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400 w-full p-2 bg-gray-50 rounded-lg outline-none text-sm border border-transparent focus:border-gray-200 transition-all" />
                         </div>
-                        <button type="button" onClick={() => removeItem(catIndex, itemIndex)} className="text-gray-300 hover:text-red-500 p-2 shrink-0 self-start md:self-center">
-                          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        <button type="button" onClick={() => removeItem(catIndex, itemIndex)} className="text-gray-300 hover:text-red-500 p-2 shrink-0 self-end md:self-center bg-gray-50 hover:bg-red-50 rounded-lg transition-colors">
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                         </button>
                       </div>
                     ))}
