@@ -34,58 +34,60 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   useEffect(() => {
     const fetchData = async () => {
       try {
-        console.log("=== DIAGNÓSTICO TIER 1 INICIADO ===");
-        console.log("ID buscado:", businessId);
-
         // 1. Cargar configuración visual del negocio
         const bizRef = doc(db, "businesses", businessId);
         const bizSnap = await getDoc(bizRef);
         
         if (bizSnap.exists()) {
           const data = bizSnap.data();
-          console.log("1. Datos encontrados en colección 'businesses':", data);
-          
           setBusinessData(data);
           setMessages([{ 
             role: "assistant", 
             content: `¡Hola! Soy el asistente virtual de ${data.businessName}. ¿Qué se te antoja hoy o qué buscas?` 
           }]);
           
-          let loadedItems: CatalogItem[] = [];
+          let rawItems: any[] = [];
 
-          // ESTRATEGIA A: Buscar en la colección "menus"
+          // Extraer los datos crudos de Firebase (de donde sea que estén)
           const menuRef = doc(db, "menus", businessId);
           const menuSnap = await getDoc(menuRef);
-          if (menuSnap.exists()) {
-            console.log("2. Datos encontrados en colección 'menus':", menuSnap.data());
-            if (menuSnap.data().catalog) {
-              loadedItems = menuSnap.data().catalog;
+          
+          if (menuSnap.exists() && menuSnap.data().catalog) {
+            rawItems = menuSnap.data().catalog;
+          } else if (data.catalog) {
+            rawItems = data.catalog;
+          } else if (data.products) {
+            rawItems = data.products;
+          }
+
+          // 🧠 EL PARSEADOR UNIVERSAL (TIER 1) 🧠
+          // Detecta y adapta automáticamente la estructura de los datos
+          let flatItems: CatalogItem[] = [];
+
+          rawItems.forEach((element: any) => {
+            if (element.items && Array.isArray(element.items)) {
+              // Estructura A: Categorizada (Viene del Onboarding ej. { category: 'Gps', items: [...] })
+              element.items.forEach((subItem: any) => {
+                if (subItem.name && subItem.name.trim() !== "") {
+                  // Inyectamos la categoría al producto para poder usarla en el diseño si queremos
+                  flatItems.push({ 
+                    ...subItem, 
+                    category: element.category || "General",
+                    price: Number(subItem.price) || 0 // Blindaje de precio
+                  });
+                }
+              });
+            } else if (element.name && element.name.trim() !== "") {
+              // Estructura B: Plana (Viene directo del Super Admin)
+              flatItems.push({
+                ...element,
+                price: Number(element.price) || 0 // Blindaje de precio
+              });
             }
-          } else {
-            console.log("2. ADVERTENCIA: No existe documento en la colección 'menus'.");
-          }
-
-          // ESTRATEGIA B: Buscar dentro del documento del negocio
-          if (loadedItems.length === 0 && data.catalog) {
-            console.log("3. Productos encontrados dentro de 'businesses' (campo catalog).");
-            loadedItems = data.catalog;
-          } else if (loadedItems.length === 0 && data.products) {
-            console.log("3. Productos encontrados dentro de 'businesses' (campo products).");
-            loadedItems = data.products;
-          }
-
-          console.log("4. Arreglo crudo antes de filtrar:", loadedItems);
-
-          // FILTRO DE SEGURIDAD (Tier 1): Eliminar productos "fantasma"
-          // NOTA: Revisa si tu base de datos usa "name", "nombre", "title", etc.
-          const validItems = loadedItems.filter(item => {
-             // Imprimimos cada item para ver qué llaves tiene
-             console.log("Revisando item:", item);
-             return item.name && item.name.trim() !== "";
           });
 
-          console.log("5. Arreglo final después de filtrar:", validItems);
-          setCatalogItems(validItems);
+          // Actualizamos el estado con los productos limpios y procesados
+          setCatalogItems(flatItems);
 
         } else {
           setNotFound(true);
