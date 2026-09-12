@@ -164,16 +164,46 @@ function OnboardingContent() {
       };
       batch.set(businessRef, payload, { merge: true });
 
-      // 2. Guardado de Catálogo (incluyendo imageUrl)
+      // 2. Procesamiento y Guardado de Catálogo (TIER 1)
       const menuRef = doc(db, "menus", businessId);
-      const cleanCatalog = catalog.map(sec => ({
-        category: sec.categoryName || "Sin Categoría",
-        items: sec.items.map(item => ({ 
-          ...item, 
-          price: Number(item.price) || 0,
-          imageUrl: item.imageUrl || "" 
-        }))
+      
+      setMessage("Procesando imágenes y optimizando catálogo...");
+      
+      const cleanCatalog = await Promise.all(catalog.map(async (sec) => {
+        const cleanItems = await Promise.all(sec.items.map(async (item) => {
+          let finalImageUrl = item.imageUrl || "";
+
+          // Si es un Base64 nuevo, lo interceptamos y lo subimos a Firebase Storage
+          if (finalImageUrl.startsWith("data:image")) {
+            try {
+              const res = await fetch(finalImageUrl); // Convertimos Base64 a Blob nativo
+              const blob = await res.blob();
+              // Generamos ruta única: productos/nombre-negocio_id-producto
+              const itemRef = ref(storage, `products/${businessId}_${item.id || Date.now()}`);
+              await uploadBytes(itemRef, blob);
+              finalImageUrl = await getDownloadURL(itemRef);
+            } catch (err) {
+              console.error("Error optimizando imagen del producto:", err);
+            }
+          }
+
+          // Armamos un objeto PURO y blindado (Elimina el error "invalid nested entity")
+          return {
+            id: item.id || generateId(),
+            name: item.name || "",
+            description: item.description || "",
+            price: Number(item.price) || 0,
+            available: item.available ?? true,
+            imageUrl: finalImageUrl // Ahora es un enlace seguro y ligero
+          };
+        }));
+
+        return {
+          category: sec.categoryName || "Sin Categoría",
+          items: cleanItems
+        };
       }));
+
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
       // 3. INYECCIÓN / ACTUALIZACIÓN DEL PORTAL CONCIERGE LITE
