@@ -2,7 +2,7 @@
 
 import { useState, useEffect, use, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MessageSquare, X, Send, Bot, Utensils, ShoppingBag, ImageIcon, ShoppingCart, Plus, Minus, Trash2, CreditCard, MessageCircle } from "lucide-react";
+import { MessageSquare, X, Send, Bot, Utensils, ShoppingBag, ImageIcon, ShoppingCart, Plus, Minus, Trash2, CreditCard, MessageCircle, Loader2 } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -29,9 +29,10 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
 
-  // 🛒 ESTADOS DEL CARRITO DE COMPRAS
+  // 🛒 ESTADOS DEL CARRITO Y PAGOS
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [isProcessing, setIsProcessing] = useState<"online" | "terminal" | null>(null);
 
   // Estados del Chatbot de Ventas (IA de OpenAI)
   const [isChatOpen, setIsChatOpen] = useState(false);
@@ -135,18 +136,61 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
   const getCartTotal = () => cart.reduce((total, item) => total + (item.price * item.quantity), 0);
   const getCartCount = () => cart.reduce((count, item) => count + item.quantity, 0);
 
-  // 🚀 CHECKOUT MULTICANAL
+  // 🚀 CHECKOUT MULTICANAL TIER 1
   const handleWhatsAppCheckout = () => {
     const text = `¡Hola! Quiero hacer un pedido de tu catálogo digital:\n\n${cart.map(item => `▪ ${item.quantity}x ${item.name} - $${(item.price * item.quantity).toFixed(2)}`).join('\n')}\n\n*Total a pagar: $${getCartTotal().toFixed(2)}*`;
     const phone = businessData?.phone || businessData?.originalPhone || "";
-    // Si no hay teléfono registrado, lo mandamos a un link genérico de compartir
     const url = phone ? `https://wa.me/${phone}?text=${encodeURIComponent(text)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
     window.open(url, '_blank');
   };
 
-  const handleOnlineCheckout = () => {
-    alert("Iniciando conexión con Point API / Mercado Pago... (Módulo en construcción)");
-    // Aquí conectaremos la API de Mercado Pago en el siguiente paso
+  // Checkout Web (Mercado Pago SDK)
+  const handleOnlineCheckout = async () => {
+    setIsProcessing("online");
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId, cart, method: 'online' })
+      });
+      const data = await res.json();
+      
+      if (data.init_point) {
+        // Redirección segura a la pasarela de pago del cliente
+        window.location.href = data.init_point;
+      } else {
+        alert(data.error || "Ocurrió un error al generar el cobro.");
+        setIsProcessing(null);
+      }
+    } catch (error) {
+      alert("Error de red. Verifica tu conexión e intenta de nuevo.");
+      setIsProcessing(null);
+    }
+  };
+
+  // Checkout Point API (Despierta la Terminal Física)
+  const handleTerminalCheckout = async () => {
+    setIsProcessing("terminal");
+    try {
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ businessId, cart, method: 'terminal' })
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        alert("¡Terminal activada exitosamente! Acerque su tarjeta o dispositivo al lector físico.");
+        setCart([]); // Vaciamos el carrito tras mandar la orden exitosamente
+        setIsCartOpen(false);
+      } else {
+        alert(data.error || "La terminal está apagada o no configurada.");
+      }
+    } catch (error) {
+      alert("Error de red al intentar conectar con la terminal.");
+    } finally {
+      setIsProcessing(null);
+    }
   };
 
   // Lógica del Chat de Ventas
@@ -375,25 +419,37 @@ export default function PublicMenuPage({ params }: { params: Promise<{ businessI
 
               {cart.length > 0 && (
                 <div className="p-6 bg-[#18181B] border-t border-[#27272A] space-y-4">
-                  <div className="flex items-center justify-between text-lg font-black text-white">
-                    <span>Total:</span>
+                  <div className="flex items-center justify-between text-lg font-black text-white mb-2">
+                    <span>Total a pagar:</span>
                     <span className="font-mono">${getCartTotal().toFixed(2)}</span>
                   </div>
                   
                   <div className="space-y-3">
                     <button 
                       onClick={handleWhatsAppCheckout}
-                      className="w-full py-4 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-[0_0_15px_rgba(37,211,102,0.3)]"
+                      disabled={!!isProcessing}
+                      className="w-full py-3.5 bg-[#25D366] hover:bg-[#20bd5a] text-white font-bold rounded-2xl flex items-center justify-center gap-2 transition-colors shadow-[0_0_15px_rgba(37,211,102,0.2)] disabled:opacity-50"
                     >
-                      <MessageCircle className="w-5 h-5" /> Enviar Pedido por WhatsApp
+                      <MessageCircle className="w-5 h-5" /> Enviar por WhatsApp
                     </button>
                     
                     <button 
                       onClick={handleOnlineCheckout}
+                      disabled={!!isProcessing}
                       style={{ backgroundColor: primaryColor }}
-                      className="w-full py-4 text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(0,158,227,0.3)]"
+                      className="w-full py-3.5 text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity shadow-[0_0_15px_rgba(0,158,227,0.3)] disabled:opacity-50"
                     >
-                      <CreditCard className="w-5 h-5" /> Pagar en Línea
+                      {isProcessing === "online" ? <Loader2 className="w-5 h-5 animate-spin" /> : <CreditCard className="w-5 h-5" />}
+                      {isProcessing === "online" ? "Procesando cobro..." : "Pagar en Línea Seguro"}
+                    </button>
+
+                    <button 
+                      onClick={handleTerminalCheckout}
+                      disabled={!!isProcessing}
+                      className="w-full py-3.5 bg-[#27272A] text-white font-bold rounded-2xl flex items-center justify-center gap-2 hover:bg-[#3f3f46] transition-colors disabled:opacity-50"
+                    >
+                      {isProcessing === "terminal" ? <Loader2 className="w-5 h-5 animate-spin" /> : <Utensils className="w-5 h-5" />}
+                      {isProcessing === "terminal" ? "Despertando terminal..." : "Mandar Cobro a Terminal"}
                     </button>
                   </div>
                 </div>

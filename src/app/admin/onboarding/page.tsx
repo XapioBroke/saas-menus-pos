@@ -5,7 +5,7 @@ import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Link as LinkIcon, Image as ImageIcon } from "lucide-react";
+import { CheckCircle2, Link as LinkIcon, Image as ImageIcon, CreditCard } from "lucide-react";
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -36,6 +36,11 @@ function OnboardingContent() {
   const [bgFile, setBgFile] = useState<File | null>(null);
   
   const [aiPrompt, setAiPrompt] = useState("");
+  
+  // 🚀 ESTADOS DE MERCADO PAGO (La Bóveda)
+  const [mpAccessToken, setMpAccessToken] = useState("");
+  const [mpDeviceId, setMpDeviceId] = useState("");
+
   const [catalog, setCatalog] = useState([
     { categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }
   ]);
@@ -59,6 +64,10 @@ function OnboardingContent() {
             setBusinessType(data.businessType || "gastronomia");
             setPrimaryColor(data.brandSettings?.primaryColor || "#2563eb");
             setAiPrompt(data.aiPromptContext || "");
+            
+            // Cargar credenciales de MP si existen
+            setMpAccessToken(data.mercadopagoAccessToken || "");
+            setMpDeviceId(data.mercadopagoDeviceId || "");
             
             const existingBgUrl = data.brandSettings?.backgroundUrl;
             if (existingBgUrl) {
@@ -110,7 +119,7 @@ function OnboardingContent() {
   const removeItem = (cIdx: number, iIdx: number) => { const n = [...catalog]; n[cIdx].items.splice(iIdx, 1); setCatalog(n); };
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const n = [...catalog]; n[cIdx].items[iIdx] = { ...n[cIdx].items[iIdx], [field]: val }; setCatalog(n); };
 
-  // Lector de Imágenes para los Artículos del Catálogo (Base64)
+  // Lector de Imágenes Base64
   const handleCatalogImageUpload = (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -129,7 +138,6 @@ function OnboardingContent() {
       return;
     }
     
-    // Validamos siempre el teléfono, ya sea creación o edición
     if (!businessPhone || businessPhone.length < 4) {
         setMessage("Error: Se requiere el WhatsApp (mínimo 4 dígitos) para generar el PIN Concierge.");
         return;
@@ -155,30 +163,30 @@ function OnboardingContent() {
 
       const batch = writeBatch(db);
 
-      // 1. Guardado de Configuración Principal
+      // 1. Guardado de Configuración Principal + Llaves MP
       const businessRef = doc(db, "businesses", businessId);
       const payload = {
         businessName, businessType,
         brandSettings: { primaryColor, ...(logoUrl && { logoUrl }), ...(backgroundUrl && { backgroundUrl }) },
-        aiPromptContext: aiPrompt, updatedAt: new Date().toISOString(),
+        aiPromptContext: aiPrompt, 
+        updatedAt: new Date().toISOString(),
+        // Guardamos las llaves de Mercado Pago
+        mercadopagoAccessToken: mpAccessToken.trim(),
+        mercadopagoDeviceId: mpDeviceId.trim()
       };
       batch.set(businessRef, payload, { merge: true });
 
-      // 2. Procesamiento y Guardado de Catálogo (TIER 1)
+      // 2. Procesamiento de Catálogo Optimizado (Imágenes Base64 -> Storage)
       const menuRef = doc(db, "menus", businessId);
-      
-      setMessage("Procesando imágenes y optimizando catálogo...");
       
       const cleanCatalog = await Promise.all(catalog.map(async (sec) => {
         const cleanItems = await Promise.all(sec.items.map(async (item) => {
           let finalImageUrl = item.imageUrl || "";
 
-          // Si es un Base64 nuevo, lo interceptamos y lo subimos a Firebase Storage
           if (finalImageUrl.startsWith("data:image")) {
             try {
-              const res = await fetch(finalImageUrl); // Convertimos Base64 a Blob nativo
+              const res = await fetch(finalImageUrl);
               const blob = await res.blob();
-              // Generamos ruta única: productos/nombre-negocio_id-producto
               const itemRef = ref(storage, `products/${businessId}_${item.id || Date.now()}`);
               await uploadBytes(itemRef, blob);
               finalImageUrl = await getDownloadURL(itemRef);
@@ -187,14 +195,13 @@ function OnboardingContent() {
             }
           }
 
-          // Armamos un objeto PURO y blindado (Elimina el error "invalid nested entity")
           return {
             id: item.id || generateId(),
             name: item.name || "",
             description: item.description || "",
             price: Number(item.price) || 0,
             available: item.available ?? true,
-            imageUrl: finalImageUrl // Ahora es un enlace seguro y ligero
+            imageUrl: finalImageUrl 
           };
         }));
 
@@ -206,16 +213,16 @@ function OnboardingContent() {
 
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
-      // 3. INYECCIÓN / ACTUALIZACIÓN DEL PORTAL CONCIERGE LITE
+      // 3. INYECCIÓN DEL PORTAL CONCIERGE LITE
       const tempPin = businessPhone.slice(-4);
       const conciergeRef = doc(db, "concierge_portals", businessId);
       
       batch.set(conciergeRef, {
           businessName: businessName,
-          pin: tempPin, // Se establece/resetea el PIN temporal
+          pin: tempPin,
           originalPhone: businessPhone,
           isActive: true,
-          requiresPinChange: true // Forzamos a que el cliente vuelva a cambiar su PIN por seguridad
+          requiresPinChange: true
       }, { merge: true });
 
       await batch.commit();
@@ -258,6 +265,7 @@ function OnboardingContent() {
             </button>
             <button onClick={() => { 
               setSuccessLink(""); setBusinessName(""); setBusinessId(""); setBusinessPhone(""); 
+              setMpAccessToken(""); setMpDeviceId("");
               setCatalog([{ categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }]);
             }} className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors">
               Crear Otro
@@ -291,7 +299,6 @@ function OnboardingContent() {
                 <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50 bg-gray-100" />
               </div>
               
-              {/* CAMPO DESBLOQUEADO: Ahora puedes editar el WhatsApp de clientes antiguos */}
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">WhatsApp del Negocio <span className="text-blue-500 text-xs">(Genera PIN)</span></label>
                 <input 
@@ -369,7 +376,6 @@ function OnboardingContent() {
                     {cat.items.map((item, itemIndex) => (
                       <div key={item.id} className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 items-start md:items-center">
                         
-                        {/* Subir Imagen del Producto */}
                         <div className="shrink-0 w-full md:w-24 h-32 md:h-24 flex justify-center">
                           <label className="cursor-pointer w-full h-full bg-blue-50 text-blue-500 rounded-xl hover:bg-blue-100 transition-colors flex items-center justify-center relative overflow-hidden border border-blue-100 shadow-sm" title="Subir Foto del Producto">
                             {item.imageUrl ? (
@@ -384,26 +390,12 @@ function OnboardingContent() {
                           </label>
                         </div>
 
-                        {/* Campos del Producto */}
                         <div className="flex-1 space-y-3 w-full">
                           <div className="flex items-center gap-3 w-full">
-                            <input 
-                              type="text" 
-                              value={item.name} 
-                              onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} 
-                              placeholder="Producto" 
-                              className="text-gray-900 placeholder-gray-400 flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-green-100 font-medium border border-transparent focus:border-green-200 transition-all" 
-                            />
-                            
+                            <input type="text" value={item.name} onChange={(e) => updateItem(catIndex, itemIndex, 'name', e.target.value)} placeholder="Producto" className="text-gray-900 placeholder-gray-400 flex-1 p-2 bg-gray-50 rounded-lg outline-none focus:ring-2 focus:ring-green-100 font-medium border border-transparent focus:border-green-200 transition-all" />
                             <div className="relative ml-auto shrink-0">
                               <span className="absolute left-4 top-1/2 -translate-y-1/2 text-green-600 font-sans font-black text-lg">$</span>
-                              <input
-                                type="number"
-                                value={item.price}
-                                onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)}
-                                placeholder="0"
-                                className="w-32 bg-green-50 border border-green-100 rounded-full pl-10 pr-6 py-2.5 text-right text-lg font-black font-sans text-green-700 tracking-tight placeholder:text-green-200 focus:ring-1 focus:ring-green-400 focus:border-green-400 outline-none transition-all shadow-inner-sm"
-                              />
+                              <input type="number" value={item.price} onChange={(e) => updateItem(catIndex, itemIndex, 'price', e.target.value)} placeholder="0" className="w-32 bg-green-50 border border-green-100 rounded-full pl-10 pr-6 py-2.5 text-right text-lg font-black font-sans text-green-700 tracking-tight placeholder:text-green-200 focus:ring-1 focus:ring-green-400 focus:border-green-400 outline-none transition-all shadow-inner-sm" />
                             </div>
                           </div>
                           <input type="text" value={item.description} onChange={(e) => updateItem(catIndex, itemIndex, 'description', e.target.value)} placeholder="Descripción para el cliente y la IA" className="text-gray-900 placeholder-gray-400 w-full p-2 bg-gray-50 rounded-lg outline-none text-sm border border-transparent focus:border-gray-200 transition-all" />
@@ -418,6 +410,38 @@ function OnboardingContent() {
                 </div>
               ))}
               <button type="button" onClick={addCategory} className="w-full py-4 border-2 border-dashed border-gray-300 rounded-2xl text-gray-500 font-black hover:text-blue-600 hover:bg-blue-50 transition-colors">+ Nueva Categoría</button>
+            </div>
+          </div>
+
+          {/* 🚀 MÓDULO FINANCIERO TIER 1 (LA BÓVEDA) */}
+          <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6 relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
+            <h2 className="text-xl font-black text-gray-900 border-b pb-2 flex items-center gap-2">
+              <CreditCard className="w-5 h-5 text-blue-600" /> 4. Integración Financiera (Mercado Pago)
+            </h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-gray-700">Access Token (Producción)</label>
+                <input 
+                  type="password" 
+                  value={mpAccessToken} 
+                  onChange={(e) => setMpAccessToken(e.target.value)} 
+                  placeholder="APP_USR-..." 
+                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
+                />
+                <p className="text-xs text-gray-500">Credencial segura para cobros online. (Déjalo en blanco si solo usará WhatsApp).</p>
+              </div>
+              <div className="space-y-2">
+                <label className="block text-sm font-bold text-gray-700">ID de Terminal (Device ID)</label>
+                <input 
+                  type="text" 
+                  value={mpDeviceId} 
+                  onChange={(e) => setMpDeviceId(e.target.value)} 
+                  placeholder="Ej. PAX_A910_..." 
+                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
+                />
+                <p className="text-xs text-gray-500">Requerido solo si el cliente usará una terminal física (Point Smart / Plus).</p>
+              </div>
             </div>
           </div>
 
