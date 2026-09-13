@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode } from "lucide-react";
+import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2 } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -41,14 +41,21 @@ export default function SuperAdminDashboard() {
     businessName: "",
     businessId: "",
     phone: "",
+    accessPin: "", // 👈 NUEVO: Estado independiente para PIN
     businessType: "gastronomia",
     aiPrompt: "Eres un asistente amable y directo...",
     primaryColor: "#009EE3",
     backgroundUrl: PREMIUM_BACKGROUNDS[0].src,
-    logoUrl: ""
+    logoUrl: "",
+    mpAccessToken: "", // 👈 NUEVO: Estado Mercado Pago
+    mpDeviceId: "" // 👈 NUEVO: Estado Terminal
   });
   
-  // Estado para el Catálogo Inicial (ahora incluye imageUrl)
+  // Estados para Búsqueda de Terminales MP
+  const [foundDevices, setFoundDevices] = useState<any[]>([]);
+  const [isSearchingDevices, setIsSearchingDevices] = useState(false);
+  const [deviceSearchMsg, setDeviceSearchMsg] = useState("");
+
   const [catalog, setCatalog] = useState([{ name: "", description: "", price: "", imageUrl: "" }]);
   const [creating, setCreating] = useState(false);
 
@@ -88,7 +95,6 @@ export default function SuperAdminDashboard() {
     setForm({ ...form, businessName: name, businessId: slug });
   };
 
-  // Lector de Archivos Base64 para Logo y Fondo Personalizado
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'logoUrl' | 'backgroundUrl') => {
     const file = e.target.files?.[0];
     if (file) {
@@ -100,7 +106,6 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  // Lector de Imágenes para los Artículos del Catálogo
   const handleCatalogImageUpload = (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -114,58 +119,109 @@ export default function SuperAdminDashboard() {
     }
   };
 
+  // 🔍 ESCÁNER DE TERMINALES (TIER 1)
+  const handleSearchDevices = async () => {
+    if (!form.mpAccessToken.trim()) {
+      setDeviceSearchMsg("⚠️ Ingresa primero el Access Token.");
+      return;
+    }
+    setIsSearchingDevices(true);
+    setDeviceSearchMsg("");
+
+    try {
+      const res = await fetch('/api/mp-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: form.mpAccessToken.trim() })
+      });
+      const data = await res.json();
+
+      if (data.devices && data.devices.length > 0) {
+        setFoundDevices(data.devices);
+        if (!form.mpDeviceId) setForm({ ...form, mpDeviceId: data.devices[0].id });
+        setDeviceSearchMsg(`✅ ${data.devices.length} terminal(es) encontrada(s).`);
+      } else {
+        setFoundDevices([]);
+        setDeviceSearchMsg("⚠️ No se encontraron terminales en esta cuenta.");
+      }
+    } catch (error) {
+      setDeviceSearchMsg("❌ Error de red al buscar terminales.");
+    } finally {
+      setIsSearchingDevices(false);
+    }
+  };
+
   const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.businessId || !form.businessName || !form.phone) {
-      alert("Completa todos los campos obligatorios.");
+    if (!form.businessId || !form.businessName) {
+      alert("Falta el Nombre o el ID del negocio.");
+      return;
+    }
+    if (!form.phone || form.phone.length < 10) {
+      alert("Se requiere un número de WhatsApp válido (mínimo 10 dígitos).");
+      return;
+    }
+    if (!form.accessPin || form.accessPin.length !== 4) {
+      alert("El PIN de acceso debe ser exactamente de 4 dígitos.");
       return;
     }
 
     setCreating(true);
     try {
       const batch = writeBatch(db);
-      const tempPin = form.phone.slice(-4);
 
+      // 1. Colección Businesses (UNIFICADA)
       const bizRef = doc(db, "businesses", form.businessId);
       batch.set(bizRef, {
         businessName: form.businessName,
         businessType: form.businessType,
+        phone: form.phone, // 👈 Se guarda para el carrito de compras
         aiPromptContext: form.aiPrompt,
         brandSettings: { 
           primaryColor: form.primaryColor, 
           backgroundUrl: form.backgroundUrl,
           logoUrl: form.logoUrl 
         },
+        mercadopagoAccessToken: form.mpAccessToken.trim(), // 👈 Checkout Pro
+        mercadopagoDeviceId: form.mpDeviceId.trim(),       // 👈 Terminal Física
         createdAt: new Date().toISOString()
       });
 
+      // 2. Colección Concierge (UNIFICADA)
       const conciergeRef = doc(db, "concierge_portals", form.businessId);
       batch.set(conciergeRef, {
         businessName: form.businessName,
-        pin: tempPin,
+        pin: form.accessPin, // 👈 Seguridad Independiente
         originalPhone: form.phone,
         isActive: true,
         requiresPinChange: true
       });
 
-      // Guardar el Catálogo Inicial
+      // 3. Colección Menus
       const menuRef = doc(db, "menus", form.businessId);
       const formattedCatalog = catalog
-        .filter(item => item.name.trim() !== "") // Ignorar filas vacías
+        .filter(item => item.name.trim() !== "") 
         .map((item, index) => ({
           id: `item-${Date.now()}-${index}`,
           name: item.name,
           description: item.description,
           price: parseFloat(item.price) || 0,
-          imageUrl: item.imageUrl || "" // Guardar la imagen en Firebase
+          imageUrl: item.imageUrl || "" 
         }));
       batch.set(menuRef, { catalog: formattedCatalog });
 
       await batch.commit();
       
-      alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}\nPIN Temporal: ${tempPin}`);
-      setForm({ ...form, businessName: "", businessId: "", phone: "", logoUrl: "" }); 
-      setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); // Reiniciar catálogo
+      alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}\nPIN de Acceso: ${form.accessPin}`);
+      
+      // Limpiar Formulario
+      setForm({ 
+        ...form, businessName: "", businessId: "", phone: "", accessPin: "", 
+        logoUrl: "", mpAccessToken: "", mpDeviceId: "" 
+      }); 
+      setFoundDevices([]);
+      setDeviceSearchMsg("");
+      setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); 
       setActiveTab("list");
       fetchBusinesses();
     } catch (error) {
@@ -289,19 +345,42 @@ export default function SuperAdminDashboard() {
                   <Building2 className="w-5 h-5 text-[#009EE3]" /> 1. Identidad Corporativa y Accesos
                 </h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 md:col-span-1">
                     <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nombre Comercial</label>
                     <input type="text" required value={form.businessName} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 md:col-span-1">
                     <label className="text-xs font-semibold text-[#A1A1AA] uppercase">ID (URL Autogenerada)</label>
                     <input type="text" required readOnly value={form.businessId} className="w-full bg-[#27272A]/20 border border-[#27272A] rounded-2xl p-3.5 text-sm text-[#009EE3] font-mono outline-none" />
                   </div>
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">WhatsApp (Genera PIN)</label>
-                    <input type="tel" required value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" />
+
+                  {/* 👈 NUEVO: Teléfono y PIN Separados y Blindados */}
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">WhatsApp de Ventas</label>
+                    <input 
+                      type="tel" 
+                      required 
+                      maxLength={15}
+                      value={form.phone} 
+                      onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^0-9+]/g, '') })} 
+                      placeholder="Ej. 3312345678"
+                      className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" 
+                    />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 md:col-span-1">
+                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase flex justify-between">PIN de Acceso <span className="text-[#009EE3]">(4 dígitos)</span></label>
+                    <input 
+                      type="text" 
+                      required 
+                      maxLength={4}
+                      value={form.accessPin} 
+                      onChange={(e) => setForm({ ...form, accessPin: e.target.value.replace(/[^0-9]/g, '') })} 
+                      placeholder="Ej. 1234"
+                      className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] text-center tracking-[0.5em] font-bold" 
+                    />
+                  </div>
+
+                  <div className="space-y-1.5 md:col-span-2">
                     <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Giro Operativo</label>
                     <select value={form.businessType} onChange={(e) => setForm({ ...form, businessType: e.target.value })} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] cursor-pointer">
                       <option value="gastronomia" className="bg-[#18181B]">Alimentos / Restaurantes</option>
@@ -346,8 +425,6 @@ export default function SuperAdminDashboard() {
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Catálogo de Fondos Premium</label>
                   </div>
-                  
-                  {/* Selector de Galería Extendida */}
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
                     {PREMIUM_BACKGROUNDS.map((bg) => (
                       <div 
@@ -361,7 +438,6 @@ export default function SuperAdminDashboard() {
                     ))}
                   </div>
 
-                  {/* Subir Fondo Personalizado */}
                   <div className="mt-4 bg-[#27272A]/20 border border-[#27272A] border-dashed rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <div className="flex items-center gap-3">
                       <Upload className="w-5 h-5 text-[#A1A1AA]" />
@@ -372,7 +448,6 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
-              {/* Bloque 3: Catálogo Inicial */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
                 <div className="flex justify-between items-center border-b border-[#27272A] pb-4">
                   <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -390,8 +465,6 @@ export default function SuperAdminDashboard() {
                 <div className="space-y-4">
                   {catalog.map((item, index) => (
                     <div key={index} className="grid grid-cols-12 gap-3 items-start bg-[#27272A]/20 p-4 rounded-2xl border border-[#27272A]">
-                      
-                      {/* Subir Imagen del Producto */}
                       <div className="col-span-12 sm:col-span-2 md:col-span-1 flex justify-center h-full">
                         <label className="cursor-pointer w-full aspect-square bg-[#009EE3]/10 text-[#009EE3] rounded-xl hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center relative overflow-hidden border border-[#009EE3]/20" title="Subir Foto del Producto">
                           {item.imageUrl ? (
@@ -403,7 +476,6 @@ export default function SuperAdminDashboard() {
                         </label>
                       </div>
 
-                      {/* Datos del Producto */}
                       <div className="col-span-12 sm:col-span-10 md:col-span-4 h-full">
                         <input type="text" placeholder="Nombre del artículo" value={item.name} onChange={(e) => { const newCat = [...catalog]; newCat[index].name = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors h-full" />
                       </div>
@@ -414,7 +486,6 @@ export default function SuperAdminDashboard() {
                         <input type="number" placeholder="Precio $" value={item.price} onChange={(e) => { const newCat = [...catalog]; newCat[index].price = e.target.value; setCatalog(newCat); }} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-xl p-3 text-sm text-white outline-none focus:border-[#009EE3] transition-colors h-full" />
                       </div>
                       
-                      {/* Borrar */}
                       <div className="col-span-2 md:col-span-1 flex justify-end h-full">
                         <button type="button" onClick={() => setCatalog(catalog.filter((_, i) => i !== index))} className="w-full p-3 bg-red-500/10 text-red-500 rounded-xl hover:bg-red-500/20 transition-colors flex items-center justify-center h-full">
                           <Trash2 className="w-4 h-4" />
@@ -425,14 +496,74 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
-              {/* Bloque 4: Inteligencia Artificial */}
+              {/* 🚀 NUEVO BLOQUE: Integración Financiera */}
+              <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6 relative overflow-hidden">
+                <div className="absolute top-0 left-0 w-full h-1 bg-[#009EE3]"></div>
+                <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-[#009EE3]" /> 4. Integración Financiera (Mercado Pago)
+                </h2>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Access Token (Producción)</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="password" 
+                        value={form.mpAccessToken} 
+                        onChange={(e) => setForm({ ...form, mpAccessToken: e.target.value })} 
+                        placeholder="APP_USR-..." 
+                        className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]"
+                      />
+                      <button 
+                        type="button" 
+                        onClick={handleSearchDevices} 
+                        disabled={isSearchingDevices}
+                        className="px-4 py-2 bg-[#009EE3]/10 text-[#009EE3] border border-[#009EE3]/20 rounded-xl font-bold hover:bg-[#009EE3]/20 transition-colors shrink-0 flex items-center gap-2"
+                      >
+                        {isSearchingDevices ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-[#A1A1AA] opacity-70">Pégalo y usa la lupa para buscar terminales automáticamente.</p>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Terminal Física Asignada</label>
+                    {foundDevices.length > 0 ? (
+                      <select 
+                        value={form.mpDeviceId} 
+                        onChange={(e) => setForm({ ...form, mpDeviceId: e.target.value })} 
+                        className="w-full bg-[#009EE3]/10 border border-[#009EE3]/30 rounded-2xl p-3.5 text-sm text-[#009EE3] font-bold outline-none focus:border-[#009EE3] cursor-pointer"
+                      >
+                        <option value="" className="text-black">Selecciona una terminal...</option>
+                        {foundDevices.map(device => (
+                          <option key={device.id} value={device.id} className="text-black">Terminal ID: {device.id}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input 
+                        type="text" 
+                        value={form.mpDeviceId} 
+                        onChange={(e) => setForm({ ...form, mpDeviceId: e.target.value })} 
+                        placeholder="Ej. PAX_A910_... (O usa el buscador)" 
+                        className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" 
+                      />
+                    )}
+                    {deviceSearchMsg && (
+                      <p className={`text-xs font-bold mt-1 ${deviceSearchMsg.includes("✅") ? "text-emerald-400" : "text-amber-400"}`}>
+                        {deviceSearchMsg}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 4. Inteligencia Artificial
+                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 5. Inteligencia Artificial
                 </h2>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Instrucciones Base para el Bot</label>
-                  <textarea rows={4} value={form.aiPrompt} onChange={(e) => setForm({ ...form, aiPrompt: e.target.value })} placeholder="Ej. Eres el experto en cortes de cabello de Barbería Central. Recomienda estilos y ayuda a agendar citas..." className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] resize-none leading-relaxed" />
+                  <textarea rows={4} value={form.aiPrompt} onChange={(e) => setForm({ ...form, aiPrompt: e.target.value })} placeholder="Ej. Eres el experto en cortes de cabello de Barbería Central..." className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] resize-none leading-relaxed" />
                 </div>
               </div>
 

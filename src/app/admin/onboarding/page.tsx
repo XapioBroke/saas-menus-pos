@@ -28,6 +28,7 @@ function OnboardingContent() {
   const [businessName, setBusinessName] = useState("");
   const [businessId, setBusinessId] = useState("");
   const [businessPhone, setBusinessPhone] = useState("");
+  const [accessPin, setAccessPin] = useState(""); // 👈 NUEVO: Estado del PIN
   const [businessType, setBusinessType] = useState("gastronomia");
   const [primaryColor, setPrimaryColor] = useState("#2563eb");
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -67,6 +68,7 @@ function OnboardingContent() {
             setBusinessType(data.businessType || "gastronomia");
             setPrimaryColor(data.brandSettings?.primaryColor || "#2563eb");
             setAiPrompt(data.aiPromptContext || "");
+            if (data.phone) setBusinessPhone(data.phone); // Cargar teléfono si existe en la bóveda
             
             // Cargar credenciales de MP si existen
             setMpAccessToken(data.mercadopagoAccessToken || "");
@@ -87,8 +89,10 @@ function OnboardingContent() {
               })));
             }
           }
-          if (conciergeSnap.exists() && conciergeSnap.data().originalPhone) {
-              setBusinessPhone(conciergeSnap.data().originalPhone);
+          if (conciergeSnap.exists()) {
+            const cData = conciergeSnap.data();
+            if (cData.originalPhone && !businessPhone) setBusinessPhone(cData.originalPhone);
+            if (cData.pin) setAccessPin(cData.pin); // 👈 Cargar el PIN guardado
           }
         } catch (error) {
           console.error("Error cargando datos:", error);
@@ -153,7 +157,6 @@ function OnboardingContent() {
 
       if (data.devices && data.devices.length > 0) {
         setFoundDevices(data.devices);
-        // Autoseleccionar la primera terminal para comodidad
         if (!mpDeviceId) setMpDeviceId(data.devices[0].id);
         setDeviceSearchMsg(`✅ ${data.devices.length} terminal(es) encontrada(s).`);
       } else {
@@ -174,8 +177,13 @@ function OnboardingContent() {
       return;
     }
     
-    if (!businessPhone || businessPhone.length < 4) {
-        setMessage("Error: Se requiere el WhatsApp (mínimo 4 dígitos) para generar el PIN Concierge.");
+    // 👈 VALIDACIÓN SEPARADA: Teléfono (10) y PIN (4)
+    if (!businessPhone || businessPhone.length < 10) {
+        setMessage("Error: Se requiere un número de WhatsApp válido (mínimo 10 dígitos).");
+        return;
+    }
+    if (!accessPin || accessPin.length !== 4) {
+        setMessage("Error: El PIN de acceso debe ser exactamente de 4 dígitos.");
         return;
     }
 
@@ -199,10 +207,12 @@ function OnboardingContent() {
 
       const batch = writeBatch(db);
 
-      // Guardado de Configuración Principal + Llaves MP
+      // Guardado de Configuración Principal + Llaves MP + Teléfono 👈
       const businessRef = doc(db, "businesses", businessId);
       const payload = {
-        businessName, businessType,
+        businessName, 
+        businessType,
+        phone: businessPhone, // 👈 INYECTADO: Para el enrutamiento del carrito
         brandSettings: { primaryColor, ...(logoUrl && { logoUrl }), ...(backgroundUrl && { backgroundUrl }) },
         aiPromptContext: aiPrompt, 
         updatedAt: new Date().toISOString(),
@@ -248,16 +258,14 @@ function OnboardingContent() {
 
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
-      // INYECCIÓN DEL PORTAL CONCIERGE LITE
-      const tempPin = businessPhone.slice(-4);
+      // INYECCIÓN DEL PORTAL CONCIERGE LITE 👈 (Variables separadas)
       const conciergeRef = doc(db, "concierge_portals", businessId);
-      
       batch.set(conciergeRef, {
           businessName: businessName,
-          pin: tempPin,
-          originalPhone: businessPhone,
+          pin: accessPin, // 👈 PIN dedicado
+          originalPhone: businessPhone, // 👈 Teléfono dedicado
           isActive: true,
-          requiresPinChange: true
+          requiresPinChange: editBusinessId ? false : true // Solo pide cambio si es nuevo
       }, { merge: true });
 
       await batch.commit();
@@ -291,7 +299,7 @@ function OnboardingContent() {
               <LinkIcon className="w-5 h-5 text-blue-500 shrink-0" />
               <input readOnly value={successLink} className="flex-1 text-sm outline-none bg-transparent font-medium text-gray-900 cursor-pointer" />
             </div>
-            <p className="text-xs text-gray-500 mt-3">PIN Temporal generado: <strong className="text-gray-900 text-lg ml-1">{businessPhone.slice(-4)}</strong></p>
+            <p className="text-xs text-gray-500 mt-3">PIN de acceso generado: <strong className="text-gray-900 text-lg ml-1">{accessPin}</strong></p>
           </div>
 
           <div className="flex gap-4">
@@ -299,7 +307,7 @@ function OnboardingContent() {
               Ir al Admin
             </button>
             <button onClick={() => { 
-              setSuccessLink(""); setBusinessName(""); setBusinessId(""); setBusinessPhone(""); 
+              setSuccessLink(""); setBusinessName(""); setBusinessId(""); setBusinessPhone(""); setAccessPin("");
               setMpAccessToken(""); setMpDeviceId(""); setFoundDevices([]);
               setCatalog([{ categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }]);
             }} className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors">
@@ -334,16 +342,35 @@ function OnboardingContent() {
                 <input type="text" required value={businessId} onChange={handleIdChange} disabled={!!editBusinessId} className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none font-mono text-blue-600 disabled:opacity-50 bg-gray-100" />
               </div>
               
-              <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">WhatsApp del Negocio <span className="text-blue-500 text-xs">(Genera PIN)</span></label>
-                <input 
-                  type="text" 
-                  required
-                  value={businessPhone} 
-                  onChange={(e) => setBusinessPhone(e.target.value)} 
-                  placeholder="Ej. 3312345678" 
-                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
-                />
+              {/* 👈 NUEVA ESTRUCTURA: Teléfono y PIN Separados y Blindados */}
+              <div className="space-y-2 flex gap-4 md:col-span-2">
+                <div className="flex-1">
+                  <label className="block text-sm font-bold text-gray-700">WhatsApp de Ventas</label>
+                  <input 
+                    type="tel" 
+                    required
+                    maxLength={15}
+                    value={businessPhone} 
+                    onChange={(e) => setBusinessPhone(e.target.value.replace(/[^0-9+]/g, ''))} 
+                    placeholder="Ej. 3312345678" 
+                    className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
+                  />
+                  <p className="text-xs text-gray-500 mt-1">A este número llegarán los pedidos.</p>
+                </div>
+                
+                <div className="w-1/3">
+                  <label className="block text-sm font-bold text-gray-700">PIN de Acceso</label>
+                  <input 
+                    type="text" 
+                    required
+                    maxLength={4}
+                    value={accessPin} 
+                    onChange={(e) => setAccessPin(e.target.value.replace(/[^0-9]/g, ''))} 
+                    placeholder="Ej. 1234" 
+                    className="w-full text-center tracking-[0.5em] text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-black bg-gray-50" 
+                  />
+                  <p className="text-xs text-gray-500 mt-1 text-center">Clave del dueño.</p>
+                </div>
               </div>
 
               <div className="space-y-2">
