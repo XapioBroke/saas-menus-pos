@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2 } from "lucide-react";
+import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2, Clock } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
@@ -30,6 +30,20 @@ const PREMIUM_BACKGROUNDS = [
   { id: "bg-abstract", name: "Ondas Premium", src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=500&q=80" }
 ];
 
+// 🚀 TIER 1: Estructura Inicial del Horario (Lunes a Domingo)
+const DEFAULT_SCHEDULE = {
+  interval: 30, // Duración de cada cita en minutos
+  days: {
+    lunes: { active: true, open: "09:00", close: "18:00" },
+    martes: { active: true, open: "09:00", close: "18:00" },
+    miercoles: { active: true, open: "09:00", close: "18:00" },
+    jueves: { active: true, open: "09:00", close: "18:00" },
+    viernes: { active: true, open: "09:00", close: "18:00" },
+    sabado: { active: true, open: "10:00", close: "14:00" },
+    domingo: { active: false, open: "00:00", close: "00:00" }
+  }
+};
+
 export default function SuperAdminDashboard() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState<"list" | "create">("list");
@@ -41,17 +55,20 @@ export default function SuperAdminDashboard() {
     businessName: "",
     businessId: "",
     phone: "",
-    accessPin: "", // 👈 NUEVO: Estado independiente para PIN
+    accessPin: "", 
     businessType: "gastronomia",
     aiPrompt: "Eres un asistente amable y directo...",
     primaryColor: "#009EE3",
     backgroundUrl: PREMIUM_BACKGROUNDS[0].src,
     logoUrl: "",
-    mpAccessToken: "", // 👈 NUEVO: Estado Mercado Pago
-    mpDeviceId: "" // 👈 NUEVO: Estado Terminal
+    mpAccessToken: "", 
+    mpDeviceId: ""
   });
   
-  // Estados para Búsqueda de Terminales MP
+  // ESTADO DEL HORARIO
+  const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE);
+
+  // ESTADOS DE MERCADO PAGO
   const [foundDevices, setFoundDevices] = useState<any[]>([]);
   const [isSearchingDevices, setIsSearchingDevices] = useState(false);
   const [deviceSearchMsg, setDeviceSearchMsg] = useState("");
@@ -99,9 +116,7 @@ export default function SuperAdminDashboard() {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setForm({ ...form, [field]: reader.result as string });
-      };
+      reader.onloadend = () => setForm({ ...form, [field]: reader.result as string });
       reader.readAsDataURL(file);
     }
   };
@@ -119,141 +134,110 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  // 🔍 ESCÁNER DE TERMINALES (TIER 1)
   const handleSearchDevices = async () => {
-    if (!form.mpAccessToken.trim()) {
-      setDeviceSearchMsg("⚠️ Ingresa primero el Access Token.");
-      return;
-    }
-    setIsSearchingDevices(true);
-    setDeviceSearchMsg("");
-
+    if (!form.mpAccessToken.trim()) { setDeviceSearchMsg("⚠️ Ingresa primero el Access Token."); return; }
+    setIsSearchingDevices(true); setDeviceSearchMsg("");
     try {
-      const res = await fetch('/api/mp-devices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ accessToken: form.mpAccessToken.trim() })
-      });
+      const res = await fetch('/api/mp-devices', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ accessToken: form.mpAccessToken.trim() }) });
       const data = await res.json();
-
       if (data.devices && data.devices.length > 0) {
         setFoundDevices(data.devices);
         if (!form.mpDeviceId) setForm({ ...form, mpDeviceId: data.devices[0].id });
         setDeviceSearchMsg(`✅ ${data.devices.length} terminal(es) encontrada(s).`);
       } else {
         setFoundDevices([]);
-        setDeviceSearchMsg("⚠️ No se encontraron terminales en esta cuenta.");
+        setDeviceSearchMsg("⚠️ No se encontraron terminales.");
       }
-    } catch (error) {
-      setDeviceSearchMsg("❌ Error de red al buscar terminales.");
-    } finally {
-      setIsSearchingDevices(false);
-    }
+    } catch (error) { setDeviceSearchMsg("❌ Error de red."); } finally { setIsSearchingDevices(false); }
+  };
+
+  const updateScheduleDay = (day: keyof typeof DEFAULT_SCHEDULE.days, field: string, value: any) => {
+    setSchedule(prev => ({
+      ...prev,
+      days: {
+        ...prev.days,
+        [day]: { ...prev.days[day], [field]: value }
+      }
+    }));
   };
 
   const handleCreateBusiness = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.businessId || !form.businessName) {
-      alert("Falta el Nombre o el ID del negocio.");
-      return;
-    }
-    if (!form.phone || form.phone.length < 10) {
-      alert("Se requiere un número de WhatsApp válido (mínimo 10 dígitos).");
-      return;
-    }
-    if (!form.accessPin || form.accessPin.length !== 4) {
-      alert("El PIN de acceso debe ser exactamente de 4 dígitos.");
-      return;
-    }
+    if (!form.businessId || !form.businessName) return alert("Falta el Nombre o el ID.");
+    if (!form.phone || form.phone.length < 10) return alert("Se requiere un WhatsApp válido (mínimo 10 dígitos).");
+    if (!form.accessPin || form.accessPin.length !== 4) return alert("El PIN de acceso debe ser exactamente de 4 dígitos.");
 
     setCreating(true);
     try {
       const batch = writeBatch(db);
 
-      // 1. Colección Businesses (UNIFICADA)
+      // 1. Guardar Ecosistema + HORARIO 
       const bizRef = doc(db, "businesses", form.businessId);
       batch.set(bizRef, {
         businessName: form.businessName,
         businessType: form.businessType,
-        phone: form.phone, // 👈 Se guarda para el carrito de compras
+        phone: form.phone,
         aiPromptContext: form.aiPrompt,
+        schedule: schedule, // 👈 INYECCIÓN DEL HORARIO EN LA BASE DE DATOS
         brandSettings: { 
           primaryColor: form.primaryColor, 
-          backgroundUrl: form.backgroundUrl,
+          backgroundUrl: form.backgroundUrl, 
           logoUrl: form.logoUrl 
         },
-        mercadopagoAccessToken: form.mpAccessToken.trim(), // 👈 Checkout Pro
-        mercadopagoDeviceId: form.mpDeviceId.trim(),       // 👈 Terminal Física
+        mercadopagoAccessToken: form.mpAccessToken.trim(),
+        mercadopagoDeviceId: form.mpDeviceId.trim(),
         createdAt: new Date().toISOString()
       });
 
-      // 2. Colección Concierge (UNIFICADA)
+      // 2. Portal de Administrador (Concierge)
       const conciergeRef = doc(db, "concierge_portals", form.businessId);
-      batch.set(conciergeRef, {
-        businessName: form.businessName,
-        pin: form.accessPin, // 👈 Seguridad Independiente
-        originalPhone: form.phone,
-        isActive: true,
-        requiresPinChange: true
+      batch.set(conciergeRef, { 
+        businessName: form.businessName, 
+        pin: form.accessPin, 
+        originalPhone: form.phone, 
+        isActive: true, 
+        requiresPinChange: true 
       });
 
-      // 3. Colección Menus
+      // 3. Catálogo Inicial
       const menuRef = doc(db, "menus", form.businessId);
-      const formattedCatalog = catalog
-        .filter(item => item.name.trim() !== "") 
-        .map((item, index) => ({
-          id: `item-${Date.now()}-${index}`,
-          name: item.name,
-          description: item.description,
-          price: parseFloat(item.price) || 0,
-          imageUrl: item.imageUrl || "" 
-        }));
+      const formattedCatalog = catalog.filter(item => item.name.trim() !== "").map((item, index) => ({
+        id: `item-${Date.now()}-${index}`, 
+        name: item.name, 
+        description: item.description, 
+        price: parseFloat(item.price) || 0, 
+        imageUrl: item.imageUrl || "" 
+      }));
       batch.set(menuRef, { catalog: formattedCatalog });
 
       await batch.commit();
       
-      alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}\nPIN de Acceso: ${form.accessPin}`);
-      
-      // Limpiar Formulario
-      setForm({ 
-        ...form, businessName: "", businessId: "", phone: "", accessPin: "", 
-        logoUrl: "", mpAccessToken: "", mpDeviceId: "" 
-      }); 
-      setFoundDevices([]);
-      setDeviceSearchMsg("");
-      setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); 
-      setActiveTab("list");
-      fetchBusinesses();
-    } catch (error) {
-      console.error("Error creando negocio:", error);
-      alert("Error al guardar en la base de datos.");
-    } finally {
-      setCreating(false);
+      alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}`);
+      setForm({ ...form, businessName: "", businessId: "", phone: "", accessPin: "", logoUrl: "", mpAccessToken: "", mpDeviceId: "" }); 
+      setSchedule(DEFAULT_SCHEDULE);
+      setFoundDevices([]); setDeviceSearchMsg(""); setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); 
+      setActiveTab("list"); fetchBusinesses();
+    } catch (error) { 
+      console.error(error); 
+      alert("Error al guardar."); 
+    } finally { 
+      setCreating(false); 
     }
   };
 
   const handleDeleteBusiness = async (id: string, name: string) => {
-    if (confirm(`Alerta Crítica: ¿Eliminar permanentemente "${name}" y todos sus datos?`)) {
+    if (confirm(`¿Eliminar permanentemente "${name}"?`)) {
       try {
-        await deleteDoc(doc(db, "businesses", id));
-        await deleteDoc(doc(db, "concierge_portals", id));
+        await deleteDoc(doc(db, "businesses", id)); 
+        await deleteDoc(doc(db, "concierge_portals", id)); 
         await deleteDoc(doc(db, "menus", id));
         setBusinesses(prev => prev.filter(b => b.id !== id));
-      } catch (error) {
-        console.error("Error eliminando:", error);
-      }
+      } catch (error) { console.error(error); }
     }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem("is_super_admin");
-    router.push("/super-admin/login");
-  };
-
-  const filteredBusinesses = businesses.filter(b => 
-    b.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    b.id.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handleLogout = () => { localStorage.removeItem("is_super_admin"); router.push("/super-admin/login"); };
+  const filteredBusinesses = businesses.filter(b => b.businessName.toLowerCase().includes(searchTerm.toLowerCase()) || b.id.toLowerCase().includes(searchTerm.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-[#09090B] text-[#FAFAFA] font-sans p-6 lg:p-12">
@@ -269,70 +253,64 @@ export default function SuperAdminDashboard() {
               <p className="text-xs text-[#A1A1AA]">Control centralizado de infraestructura SaaS miterminal.com</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold rounded-xl text-xs border border-red-500/20 transition-colors flex items-center gap-1.5">
-            <LogOut className="w-4 h-4" /> Salir
-          </button>
+          <button onClick={handleLogout} className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-bold rounded-xl text-xs border border-red-500/20 transition-colors flex items-center gap-1.5"><LogOut className="w-4 h-4" /> Salir</button>
         </header>
 
         <div className="flex gap-3 border-b border-[#27272A] pb-4">
-          <button onClick={() => setActiveTab("list")} className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "list" ? "bg-[#009EE3] text-white shadow-lg" : "bg-[#18181B] text-[#A1A1AA] hover:text-white border border-[#27272A]"}`}>
-            <Building2 className="w-4 h-4" /> Historial de Negocios ({businesses.length})
-          </button>
-          <button onClick={() => setActiveTab("create")} className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "create" ? "bg-[#009EE3] text-white shadow-lg" : "bg-[#18181B] text-[#A1A1AA] hover:text-white border border-[#27272A]"}`}>
-            <PlusCircle className="w-4 h-4" /> Fábrica Completa de Ecosistemas
-          </button>
+          <button onClick={() => setActiveTab("list")} className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "list" ? "bg-[#009EE3] text-white shadow-lg" : "bg-[#18181B] text-[#A1A1AA] hover:text-white border border-[#27272A]"}`}><Building2 className="w-4 h-4" /> Historial de Negocios ({businesses.length})</button>
+          <button onClick={() => setActiveTab("create")} className={`px-5 py-2.5 rounded-2xl text-sm font-bold transition-all flex items-center gap-2 ${activeTab === "create" ? "bg-[#009EE3] text-white shadow-lg" : "bg-[#18181B] text-[#A1A1AA] hover:text-white border border-[#27272A]"}`}><PlusCircle className="w-4 h-4" /> Fábrica Completa de Ecosistemas</button>
         </div>
 
         {/* --- PESTAÑA 1: HISTORIAL --- */}
         {activeTab === "list" && (
-          <div className="space-y-6">
-            <div className="relative">
-              <Search className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />
-              <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar negocio por nombre o ID..." className="w-full bg-[#18181B] border border-[#27272A] rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white placeholder-[#71717A] outline-none focus:border-[#009EE3] transition-colors" />
-            </div>
+           <div className="space-y-6">
+           <div className="relative">
+             <Search className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />
+             <input type="text" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} placeholder="Buscar negocio por nombre o ID..." className="w-full bg-[#18181B] border border-[#27272A] rounded-2xl py-3.5 pl-12 pr-4 text-sm text-white placeholder-[#71717A] outline-none focus:border-[#009EE3] transition-colors" />
+           </div>
 
-            {loading ? (
-              <div className="text-center py-20 text-[#A1A1AA] animate-pulse text-sm">Cargando base de datos...</div>
-            ) : filteredBusinesses.length === 0 ? (
-              <div className="bg-[#18181B] border border-[#27272A] rounded-3xl p-12 text-center space-y-3">
-                <Building2 className="w-10 h-10 text-[#A1A1AA] mx-auto opacity-40" />
-                <p className="text-white font-semibold">No hay negocios registrados.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredBusinesses.map((biz) => (
-                  <motion.div key={biz.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 rounded-3xl shadow-xl flex flex-col justify-between gap-4">
-                    <div>
-                      <span className="text-[10px] font-mono font-bold text-[#009EE3] bg-[#009EE3]/10 px-2.5 py-1 rounded-full border border-[#009EE3]/20">{biz.id}</span>
-                      <h3 className="text-lg font-bold text-white mt-2">{biz.businessName}</h3>
-                      <p className="text-xs text-[#A1A1AA] capitalize">Giro: {biz.businessType}</p>
-                    </div>
-                    <div className="flex items-center justify-between pt-4 border-t border-[#27272A] flex-wrap gap-y-3">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <button onClick={() => window.open(`/portal/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
-                          <ExternalLink className="w-3.5 h-3.5" /> Portal
-                        </button>
-                        <button onClick={() => window.open(`/reservas/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
-                          <ExternalLink className="w-3.5 h-3.5" /> Reservas
-                        </button>
-                        <button 
-                          onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(`https://miterminal.com/portal/${biz.id}`)}`, "_blank")} 
-                          className="px-3 py-2 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
-                          title="QR de Acceso para el Dueño"
-                        >
-                          <QrCode className="w-3.5 h-3.5" /> Llave QR
-                        </button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <button onClick={() => router.push(`/admin/onboarding?businessId=${biz.id}`)} className="p-2 bg-[#27272A] hover:bg-amber-500/20 text-amber-400 rounded-xl transition-colors" title="Editar Catálogo"><Edit3 className="w-4 h-4" /></button>
-                        <button onClick={() => handleDeleteBusiness(biz.id, biz.businessName)} className="p-2 bg-[#27272A] hover:bg-red-500/20 text-red-400 rounded-xl transition-colors" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
-                      </div>
-                    </div>
-                  </motion.div>
-                ))}
-              </div>
-            )}
-          </div>
+           {loading ? (
+             <div className="text-center py-20 text-[#A1A1AA] animate-pulse text-sm">Cargando base de datos...</div>
+           ) : filteredBusinesses.length === 0 ? (
+             <div className="bg-[#18181B] border border-[#27272A] rounded-3xl p-12 text-center space-y-3">
+               <Building2 className="w-10 h-10 text-[#A1A1AA] mx-auto opacity-40" />
+               <p className="text-white font-semibold">No hay negocios registrados.</p>
+             </div>
+           ) : (
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               {filteredBusinesses.map((biz) => (
+                 <motion.div key={biz.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 rounded-3xl shadow-xl flex flex-col justify-between gap-4">
+                   <div>
+                     <span className="text-[10px] font-mono font-bold text-[#009EE3] bg-[#009EE3]/10 px-2.5 py-1 rounded-full border border-[#009EE3]/20">{biz.id}</span>
+                     <h3 className="text-lg font-bold text-white mt-2">{biz.businessName}</h3>
+                     <p className="text-xs text-[#A1A1AA] capitalize">Giro: {biz.businessType}</p>
+                   </div>
+                   <div className="flex items-center justify-between pt-4 border-t border-[#27272A] flex-wrap gap-y-3">
+                     <div className="flex items-center gap-2 flex-wrap">
+                       <button onClick={() => window.open(`/portal/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
+                         <ExternalLink className="w-3.5 h-3.5" /> Portal
+                       </button>
+                       <button onClick={() => window.open(`/reservas/${biz.id}`, "_blank")} className="px-3 py-2 bg-[#27272A] hover:bg-[#009EE3]/20 hover:text-[#009EE3] text-[#A1A1AA] text-xs font-bold rounded-xl transition-colors flex items-center gap-1">
+                         <ExternalLink className="w-3.5 h-3.5" /> Reservas
+                       </button>
+                       <button 
+                         onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(`https://miterminal.com/portal/${biz.id}`)}`, "_blank")} 
+                         className="px-3 py-2 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] text-xs font-bold rounded-xl transition-colors flex items-center gap-1"
+                         title="QR de Acceso para el Dueño"
+                       >
+                         <QrCode className="w-3.5 h-3.5" /> Llave QR
+                       </button>
+                     </div>
+                     <div className="flex items-center gap-2">
+                       <button onClick={() => router.push(`/admin/onboarding?businessId=${biz.id}`)} className="p-2 bg-[#27272A] hover:bg-amber-500/20 text-amber-400 rounded-xl transition-colors" title="Editar Catálogo"><Edit3 className="w-4 h-4" /></button>
+                       <button onClick={() => handleDeleteBusiness(biz.id, biz.businessName)} className="p-2 bg-[#27272A] hover:bg-red-500/20 text-red-400 rounded-xl transition-colors" title="Eliminar"><Trash2 className="w-4 h-4" /></button>
+                     </div>
+                   </div>
+                 </motion.div>
+               ))}
+             </div>
+           )}
+         </div>
         )}
 
         {/* --- PESTAÑA 2: FÁBRICA COMPLETA --- */}
@@ -340,62 +318,23 @@ export default function SuperAdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
             <form onSubmit={handleCreateBusiness} className="space-y-6">
               
+              {/* 1. IDENTIDAD Y ACCESOS */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6">
-                <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
-                  <Building2 className="w-5 h-5 text-[#009EE3]" /> 1. Identidad Corporativa y Accesos
-                </h2>
+                <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2"><Building2 className="w-5 h-5 text-[#009EE3]" /> 1. Identidad Corporativa y Accesos</h2>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5 md:col-span-1">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nombre Comercial</label>
-                    <input type="text" required value={form.businessName} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-1">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">ID (URL Autogenerada)</label>
-                    <input type="text" required readOnly value={form.businessId} className="w-full bg-[#27272A]/20 border border-[#27272A] rounded-2xl p-3.5 text-sm text-[#009EE3] font-mono outline-none" />
-                  </div>
-
-                  {/* 👈 NUEVO: Teléfono y PIN Separados y Blindados */}
-                  <div className="space-y-1.5 md:col-span-1">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">WhatsApp de Ventas</label>
-                    <input 
-                      type="tel" 
-                      required 
-                      maxLength={15}
-                      value={form.phone} 
-                      onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^0-9+]/g, '') })} 
-                      placeholder="Ej. 3312345678"
-                      className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" 
-                    />
-                  </div>
-                  <div className="space-y-1.5 md:col-span-1">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase flex justify-between">PIN de Acceso <span className="text-[#009EE3]">(4 dígitos)</span></label>
-                    <input 
-                      type="text" 
-                      required 
-                      maxLength={4}
-                      value={form.accessPin} 
-                      onChange={(e) => setForm({ ...form, accessPin: e.target.value.replace(/[^0-9]/g, '') })} 
-                      placeholder="Ej. 1234"
-                      className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] text-center tracking-[0.5em] font-bold" 
-                    />
-                  </div>
-
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Giro Operativo</label>
-                    <select value={form.businessType} onChange={(e) => setForm({ ...form, businessType: e.target.value })} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] cursor-pointer">
-                      <option value="gastronomia" className="bg-[#18181B]">Alimentos / Restaurantes</option>
-                      <option value="servicios" className="bg-[#18181B]">Servicios / Barberías (Citas)</option>
-                      <option value="retail" className="bg-[#18181B]">Retail / Tienda Cuadrícula</option>
-                    </select>
-                  </div>
+                  <div className="space-y-1.5 md:col-span-1"><label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nombre Comercial</label><input type="text" required value={form.businessName} onChange={(e) => handleNameChange(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" /></div>
+                  <div className="space-y-1.5 md:col-span-1"><label className="text-xs font-semibold text-[#A1A1AA] uppercase">ID (URL Autogenerada)</label><input type="text" required readOnly value={form.businessId} className="w-full bg-[#27272A]/20 border border-[#27272A] rounded-2xl p-3.5 text-sm text-[#009EE3] font-mono outline-none" /></div>
+                  <div className="space-y-1.5 md:col-span-1"><label className="text-xs font-semibold text-[#A1A1AA] uppercase">WhatsApp de Ventas</label><input type="tel" required maxLength={15} value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value.replace(/[^0-9+]/g, '') })} placeholder="Ej. 3312345678" className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3]" /></div>
+                  <div className="space-y-1.5 md:col-span-1"><label className="text-xs font-semibold text-[#A1A1AA] uppercase flex justify-between">PIN de Acceso <span className="text-[#009EE3]">(4 dígitos)</span></label><input type="text" required maxLength={4} value={form.accessPin} onChange={(e) => setForm({ ...form, accessPin: e.target.value.replace(/[^0-9]/g, '') })} placeholder="Ej. 1234" className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] text-center tracking-[0.5em] font-bold" /></div>
+                  <div className="space-y-1.5 md:col-span-2"><label className="text-xs font-semibold text-[#A1A1AA] uppercase">Giro Operativo</label><select value={form.businessType} onChange={(e) => setForm({ ...form, businessType: e.target.value })} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-3.5 text-sm text-white outline-none focus:border-[#009EE3] cursor-pointer"><option value="gastronomia" className="bg-[#18181B]">Alimentos / Restaurantes</option><option value="servicios" className="bg-[#18181B]">Servicios / Barberías (Citas)</option><option value="retail" className="bg-[#18181B]">Retail / Tienda Cuadrícula</option></select></div>
                 </div>
               </div>
 
+              {/* 2. DISEÑO VISUAL */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6">
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
                   <Palette className="w-5 h-5 text-[#009EE3]" /> 2. Diseño Visual
                 </h2>
-                
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="flex-1 space-y-2">
                     <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Logotipo Oficial</label>
@@ -448,6 +387,7 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
+              {/* 3. CATÁLOGO INICIAL */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
                 <div className="flex justify-between items-center border-b border-[#27272A] pb-4">
                   <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -496,7 +436,7 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
-              {/* 🚀 NUEVO BLOQUE: Integración Financiera */}
+              {/* 4. INTEGRACIÓN FINANCIERA */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6 relative overflow-hidden">
                 <div className="absolute top-0 left-0 w-full h-1 bg-[#009EE3]"></div>
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
@@ -557,9 +497,69 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
+              {/* 🚀 NUEVO BLOQUE: HORARIOS Y RESERVAS */}
+              <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6">
+                <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
+                  <Clock className="w-5 h-5 text-[#009EE3]" /> 5. Horarios de Operación
+                </h2>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center gap-4 mb-6">
+                    <label className="text-sm font-semibold text-[#A1A1AA]">Duración por cita (min):</label>
+                    <select 
+                      value={schedule.interval} 
+                      onChange={(e) => setSchedule({...schedule, interval: Number(e.target.value)})}
+                      className="bg-[#27272A] text-white rounded-lg p-2 outline-none border border-[#3F3F46] focus:border-[#009EE3]"
+                    >
+                      <option value={15}>15 min</option>
+                      <option value={30}>30 min</option>
+                      <option value={45}>45 min</option>
+                      <option value={60}>1 hora</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-3">
+                    {Object.entries(schedule.days).map(([dayKey, dayData]) => (
+                      <div key={dayKey} className="flex flex-col sm:flex-row sm:items-center justify-between bg-[#27272A]/30 p-4 rounded-xl border border-[#27272A] gap-4">
+                        <div className="flex items-center gap-3 w-32">
+                          <input 
+                            type="checkbox" 
+                            checked={dayData.active}
+                            onChange={(e) => updateScheduleDay(dayKey as any, 'active', e.target.checked)}
+                            className="w-4 h-4 accent-[#009EE3] rounded"
+                          />
+                          <span className="text-white capitalize font-medium">{dayKey}</span>
+                        </div>
+                        
+                        {dayData.active ? (
+                          <div className="flex items-center gap-3">
+                            <input 
+                              type="time" 
+                              value={dayData.open}
+                              onChange={(e) => updateScheduleDay(dayKey as any, 'open', e.target.value)}
+                              className="bg-[#18181B] text-white p-2 rounded-lg border border-[#3F3F46] outline-none focus:border-[#009EE3] text-sm"
+                            />
+                            <span className="text-[#A1A1AA] font-bold">a</span>
+                            <input 
+                              type="time" 
+                              value={dayData.close}
+                              onChange={(e) => updateScheduleDay(dayKey as any, 'close', e.target.value)}
+                              className="bg-[#18181B] text-white p-2 rounded-lg border border-[#3F3F46] outline-none focus:border-[#009EE3] text-sm"
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-red-400 text-sm font-bold bg-red-400/10 px-3 py-1 rounded-lg">Cerrado</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. INTELIGENCIA ARTIFICIAL */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-4">
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
-                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 5. Inteligencia Artificial
+                  <ShieldCheck className="w-5 h-5 text-[#009EE3]" /> 6. Inteligencia Artificial
                 </h2>
                 <div className="space-y-2">
                   <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Instrucciones Base para el Bot</label>

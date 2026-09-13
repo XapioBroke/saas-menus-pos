@@ -2,9 +2,55 @@
 
 import { useState, useEffect, use, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { User, Phone, CheckCircle2, Scissors, MessageSquare, X, Send, Bot, Utensils, ShoppingBag, Briefcase, ChevronDown } from "lucide-react";
-import { doc, getDoc, collection, addDoc } from "firebase/firestore";
+import { User, Phone, CheckCircle2, Scissors, MessageSquare, X, Send, Bot, Utensils, ShoppingBag, Briefcase, ChevronDown, Clock } from "lucide-react";
+import { doc, getDoc, collection, addDoc, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+
+// 🚀 MOTOR DE DISPONIBILIDAD TIER 1
+const generateAvailableTimeSlots = (dateStr: string, schedule: any, bookedSlots: string[] = []) => {
+  if (!schedule || !schedule.days) return [];
+
+  // Parseo seguro de fecha local (Evita desfases de UTC)
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const selectedDate = new Date(year, month - 1, day);
+
+  const daysMap = ["domingo", "lunes", "martes", "miercoles", "jueves", "viernes", "sabado"];
+  const dayKey = daysMap[selectedDate.getDay()];
+  const todaySchedule = schedule.days[dayKey];
+
+  // Si el día está inactivo en el Super Admin, no hay slots
+  if (!todaySchedule || !todaySchedule.active) return [];
+
+  const slots: string[] = [];
+  const interval = schedule.interval || 30; 
+  
+  const [openHour, openMin] = todaySchedule.open.split(":").map(Number);
+  const [closeHour, closeMin] = todaySchedule.close.split(":").map(Number);
+
+  let currentTime = new Date(selectedDate);
+  currentTime.setHours(openHour, openMin, 0, 0);
+  
+  const endTime = new Date(selectedDate);
+  endTime.setHours(closeHour, closeMin, 0, 0);
+
+  const now = new Date();
+
+  while (currentTime < endTime) {
+    const h = currentTime.getHours().toString().padStart(2, '0');
+    const m = currentTime.getMinutes().toString().padStart(2, '0');
+    const timeString = `${h}:${m}`;
+
+    const isToday = selectedDate.toDateString() === now.toDateString();
+    const isPast = isToday && currentTime <= now;
+    const isBooked = bookedSlots.includes(timeString);
+
+    if (!isPast && !isBooked) {
+      slots.push(timeString);
+    }
+    currentTime.setMinutes(currentTime.getMinutes() + interval);
+  }
+  return slots;
+};
 
 export default function PublicBookingPage({ params }: { params: Promise<{ businessId: string }> }) {
   const resolvedParams = use(params);
@@ -16,9 +62,13 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
   const [clientName, setClientName] = useState("");
   const [phone, setPhone] = useState("");
   const [serviceName, setServiceName] = useState("");
-  const [customService, setCustomService] = useState(""); // Para cuando eligen "Otro"
+  const [customService, setCustomService] = useState(""); 
+  
+  // 🚀 ESTADOS DEL MOTOR DE RESERVAS
   const [date, setDate] = useState("");
   const [time, setTime] = useState("");
+  const [availableSlots, setAvailableSlots] = useState<string[]>([]);
+  const [isLoadingSlots, setIsLoadingSlots] = useState(false);
   
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -31,11 +81,9 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
   const [isTyping, setIsTyping] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Consultar el negocio y su catálogo
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // 1. Obtener Info del Negocio
         const docRef = doc(db, "businesses", businessId);
         const docSnap = await getDoc(docRef);
         
@@ -44,7 +92,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           setBusinessData(data);
           setMessages([{ role: "assistant", content: `¡Hola! Soy el asistente virtual de ${data.businessName}. ¿En qué te puedo ayudar hoy?` }]);
           
-          // 2. Obtener Catálogo para rellenar opciones dinámicamente
           const menuRef = doc(db, "menus", businessId);
           const menuSnap = await getDoc(menuRef);
           
@@ -55,11 +102,9 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           
           setCatalogServices(fetchedServices);
 
-          // 3. Auto-seleccionar la primera opción disponible
           if (fetchedServices.length > 0) {
             setServiceName(fetchedServices[0]);
           } else {
-            // Si no hay catálogo, ponemos el Smart Default según el giro
             const tipo = data.businessType;
             if (tipo === 'gastronomia') setServiceName("Mesa en Interior");
             else if (tipo === 'retail') setServiceName("Asesoría en Tienda");
@@ -67,7 +112,7 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           }
         }
       } catch (error) {
-        console.error("Error obteniendo datos del negocio:", error);
+        console.error("Error obteniendo datos:", error);
       } finally {
         setLoading(false);
       }
@@ -75,7 +120,45 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     if (businessId) fetchData();
   }, [businessId]);
 
-  // Auto-scroll del chat
+  // 🚀 DISPARADOR DEL MOTOR DE RESERVAS: Se ejecuta cada vez que el cliente cambia la fecha
+  useEffect(() => {
+    const fetchOccupiedSlots = async () => {
+      if (!date || !businessData?.schedule) {
+        setAvailableSlots([]);
+        return;
+      }
+
+      setIsLoadingSlots(true);
+      try {
+        // Consulta exacta: Buscar citas de este negocio, en esta fecha específica
+        const q = query(
+          collection(db, "appointments"),
+          where("businessId", "==", businessId),
+          where("date", "==", date)
+        );
+        const snap = await getDocs(q);
+        
+        // Mapear solo las horas ocupadas
+        const occupiedTimes = snap.docs.map(doc => doc.data().time);
+        
+        // Pasar por nuestro Motor Matrix
+        const slots = generateAvailableTimeSlots(date, businessData.schedule, occupiedTimes);
+        
+        setAvailableSlots(slots);
+        
+        // Si la hora que había seleccionado ya no está disponible, la limpiamos
+        if (!slots.includes(time)) setTime("");
+        
+      } catch (error) {
+        console.error("Error calculando disponibilidad:", error);
+      } finally {
+        setIsLoadingSlots(false);
+      }
+    };
+
+    fetchOccupiedSlots();
+  }, [date, businessData, businessId, time]);
+
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
@@ -99,6 +182,12 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
         createdAt: new Date().toISOString()
       });
       setSuccess(true);
+      
+      // Limpiar datos sensibles para la siguiente reserva
+      setClientName("");
+      setPhone("");
+      setDate("");
+      setTime("");
     } catch (error) {
       alert("Error al agendar. Intenta de nuevo.");
     } finally {
@@ -115,7 +204,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     setChatInput("");
     setIsTyping(true);
 
-    // INYECCIÓN TIER 1: Combinamos las instrucciones del dueño con el catálogo real
     const catalogContext = catalogServices.length > 0 
       ? `\n\nIMPORTANTE - Este es nuestro catálogo/menú actual: ${catalogServices.join(', ')}. Solo ofrece estos servicios o productos.` 
       : "";
@@ -127,7 +215,7 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           messages: [...messages, { role: "user", content: userMsg }],
-          systemPrompt: fullPrompt // Pasamos el prompt enriquecido con el catálogo
+          systemPrompt: fullPrompt 
         })
       });
       const data = await res.json();
@@ -140,12 +228,12 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
       setIsTyping(false);
     }
   };
+
   const bName = businessData?.businessName || "Cargando...";
   const bgImage = businessData?.brandSettings?.backgroundUrl || "";
   const primaryColor = businessData?.brandSettings?.primaryColor || "#009EE3";
   const bType = businessData?.businessType || "servicios";
 
-  // Generador de Opciones Dinámicas
   const getServiceOptions = () => {
     let options = [];
     if (catalogServices.length > 0) {
@@ -153,13 +241,12 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     } else {
       if (bType === 'gastronomia') options = ['Mesa en Interior', 'Mesa en Terraza', 'Evento Privado / Grupo'];
       else if (bType === 'retail') options = ['Asesoría en Tienda', 'Recolección de Pedido', 'Soporte / Devolución'];
-      else options = ['Servicio General / Asesoría', 'Cotización de Proyecto', 'Revisión Técnica']; // Servicios genéricos
+      else options = ['Servicio General / Asesoría', 'Cotización de Proyecto', 'Revisión Técnica']; 
     }
     options.push("Otro (Especificar)");
     return options;
   };
 
-  // Ícono Dinámico según el Giro
   const renderServiceIcon = () => {
     if (bType === 'gastronomia') return <Utensils className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />;
     if (bType === 'retail') return <ShoppingBag className="absolute left-4 top-3.5 w-5 h-5 text-[#A1A1AA]" />;
@@ -198,7 +285,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
   return (
     <div className="min-h-screen bg-[#09090B] text-[#FAFAFA] font-sans p-6 flex flex-col justify-center items-center relative overflow-hidden">
       
-      {/* Fondo Dinámico con Parallax sutil */}
       {bgImage && (
         <div className="absolute inset-0 z-0 opacity-20 pointer-events-none">
           <img src={bgImage} alt="Fondo" className="w-full h-full object-cover blur-sm" />
@@ -239,7 +325,7 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           </div>
 
           <div className="space-y-2">
-            <label className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">Servicio / Motivo de Reserva</label>
+            <label className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">Servicio / Motivo</label>
             <div className="relative">
               {renderServiceIcon()}
               <select 
@@ -258,7 +344,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
             </div>
           </div>
 
-          {/* Campo expansible si elige "Otro" */}
           <AnimatePresence>
             {serviceName === "Otro (Especificar)" && (
               <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="space-y-2 overflow-hidden">
@@ -278,11 +363,38 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           <div className="grid grid-cols-2 gap-4 pt-1">
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">Fecha</label>
-              <input type="date" required value={date} onChange={(e) => setDate(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3.5 px-4 text-sm text-white outline-none focus:border-[#009EE3] transition-colors cursor-pointer" />
+              <input 
+                type="date" 
+                required 
+                // Evitamos fechas en el pasado en el HTML nativo
+                min={new Date().toISOString().split('T')[0]} 
+                value={date} 
+                onChange={(e) => setDate(e.target.value)} 
+                className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3.5 px-4 text-sm text-white outline-none focus:border-[#009EE3] transition-colors cursor-pointer" 
+              />
             </div>
+            
+            {/* 🚀 EL NUEVO SELECTOR INTELIGENTE DE HORAS */}
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">Hora</label>
-              <input type="time" required value={time} onChange={(e) => setTime(e.target.value)} className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3.5 px-4 text-sm text-white outline-none focus:border-[#009EE3] transition-colors cursor-pointer" />
+              <div className="relative">
+                <Clock className="absolute left-4 top-3.5 w-4 h-4 text-[#A1A1AA]" />
+                <select 
+                  required 
+                  value={time} 
+                  onChange={(e) => setTime(e.target.value)} 
+                  disabled={!date || isLoadingSlots || availableSlots.length === 0}
+                  className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl py-3.5 pl-10 pr-4 text-sm text-white outline-none focus:border-[#009EE3] cursor-pointer appearance-none transition-colors disabled:opacity-50"
+                >
+                  <option value="" className="bg-[#18181B]" disabled>
+                    {!date ? "Elige fecha" : isLoadingSlots ? "Cargando..." : availableSlots.length === 0 ? "Agotado" : "Hora"}
+                  </option>
+                  {availableSlots.map((slot) => (
+                    <option key={slot} value={slot} className="bg-[#18181B]">{slot}</option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-4 top-4 w-4 h-4 text-[#A1A1AA] pointer-events-none" />
+              </div>
             </div>
           </div>
 
