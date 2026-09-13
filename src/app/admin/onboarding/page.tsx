@@ -5,7 +5,7 @@ import { doc, getDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, Link as LinkIcon, Image as ImageIcon, CreditCard } from "lucide-react";
+import { CheckCircle2, Link as LinkIcon, Image as ImageIcon, CreditCard, Search, Loader2 } from "lucide-react";
 
 const generateId = () => Math.random().toString(36).substr(2, 9);
 
@@ -40,6 +40,9 @@ function OnboardingContent() {
   // 🚀 ESTADOS DE MERCADO PAGO (La Bóveda)
   const [mpAccessToken, setMpAccessToken] = useState("");
   const [mpDeviceId, setMpDeviceId] = useState("");
+  const [foundDevices, setFoundDevices] = useState<any[]>([]);
+  const [isSearchingDevices, setIsSearchingDevices] = useState(false);
+  const [deviceSearchMsg, setDeviceSearchMsg] = useState("");
 
   const [catalog, setCatalog] = useState([
     { categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }
@@ -119,7 +122,6 @@ function OnboardingContent() {
   const removeItem = (cIdx: number, iIdx: number) => { const n = [...catalog]; n[cIdx].items.splice(iIdx, 1); setCatalog(n); };
   const updateItem = (cIdx: number, iIdx: number, field: string, val: any) => { const n = [...catalog]; n[cIdx].items[iIdx] = { ...n[cIdx].items[iIdx], [field]: val }; setCatalog(n); };
 
-  // Lector de Imágenes Base64
   const handleCatalogImageUpload = (cIdx: number, iIdx: number, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -128,6 +130,40 @@ function OnboardingContent() {
         updateItem(cIdx, iIdx, 'imageUrl', reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // 🔍 EL ESCÁNER DE TERMINALES (TIER 1)
+  const handleSearchDevices = async () => {
+    if (!mpAccessToken.trim()) {
+      setDeviceSearchMsg("⚠️ Ingresa primero el Access Token.");
+      return;
+    }
+
+    setIsSearchingDevices(true);
+    setDeviceSearchMsg("");
+
+    try {
+      const res = await fetch('/api/mp-devices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accessToken: mpAccessToken.trim() })
+      });
+      const data = await res.json();
+
+      if (data.devices && data.devices.length > 0) {
+        setFoundDevices(data.devices);
+        // Autoseleccionar la primera terminal para comodidad
+        if (!mpDeviceId) setMpDeviceId(data.devices[0].id);
+        setDeviceSearchMsg(`✅ ${data.devices.length} terminal(es) encontrada(s).`);
+      } else {
+        setFoundDevices([]);
+        setDeviceSearchMsg("⚠️ No se encontraron terminales en esta cuenta.");
+      }
+    } catch (error) {
+      setDeviceSearchMsg("❌ Error de red al buscar terminales.");
+    } finally {
+      setIsSearchingDevices(false);
     }
   };
 
@@ -163,20 +199,19 @@ function OnboardingContent() {
 
       const batch = writeBatch(db);
 
-      // 1. Guardado de Configuración Principal + Llaves MP
+      // Guardado de Configuración Principal + Llaves MP
       const businessRef = doc(db, "businesses", businessId);
       const payload = {
         businessName, businessType,
         brandSettings: { primaryColor, ...(logoUrl && { logoUrl }), ...(backgroundUrl && { backgroundUrl }) },
         aiPromptContext: aiPrompt, 
         updatedAt: new Date().toISOString(),
-        // Guardamos las llaves de Mercado Pago
         mercadopagoAccessToken: mpAccessToken.trim(),
         mercadopagoDeviceId: mpDeviceId.trim()
       };
       batch.set(businessRef, payload, { merge: true });
 
-      // 2. Procesamiento de Catálogo Optimizado (Imágenes Base64 -> Storage)
+      // Procesamiento de Catálogo Optimizado
       const menuRef = doc(db, "menus", businessId);
       
       const cleanCatalog = await Promise.all(catalog.map(async (sec) => {
@@ -213,7 +248,7 @@ function OnboardingContent() {
 
       batch.set(menuRef, { catalog: cleanCatalog }, { merge: true });
 
-      // 3. INYECCIÓN DEL PORTAL CONCIERGE LITE
+      // INYECCIÓN DEL PORTAL CONCIERGE LITE
       const tempPin = businessPhone.slice(-4);
       const conciergeRef = doc(db, "concierge_portals", businessId);
       
@@ -265,7 +300,7 @@ function OnboardingContent() {
             </button>
             <button onClick={() => { 
               setSuccessLink(""); setBusinessName(""); setBusinessId(""); setBusinessPhone(""); 
-              setMpAccessToken(""); setMpDeviceId("");
+              setMpAccessToken(""); setMpDeviceId(""); setFoundDevices([]);
               setCatalog([{ categoryId: generateId(), categoryName: "", items: [{ id: generateId(), name: "", price: "", description: "", available: true, imageUrl: "" }] }]);
             }} className="flex-1 py-3 bg-black text-white font-bold rounded-xl hover:bg-gray-800 transition-colors">
               Crear Otro
@@ -309,13 +344,10 @@ function OnboardingContent() {
                   placeholder="Ej. 3312345678" 
                   className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  {editBusinessId ? "Modificarlo reseteará el PIN del cliente a estos últimos 4 dígitos." : "Los últimos 4 dígitos serán la contraseña del cliente."}
-                </p>
               </div>
 
               <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">Giro Comercial (Cambia el diseño final)</label>
+                <label className="block text-sm font-bold text-gray-700">Giro Comercial</label>
                 <select 
                   value={businessType} 
                   onChange={(e) => setBusinessType(e.target.value)} 
@@ -331,7 +363,7 @@ function OnboardingContent() {
                   <input type="file" accept="image/*" onChange={handleLogoChange} className="w-full text-xs text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-blue-50 file:text-blue-700 border border-gray-200 p-2 rounded-xl" />
                 </div>
                 <div className="w-24">
-                  <label className="block text-sm font-bold text-gray-700 text-center mb-2">Color Marca</label>
+                  <label className="block text-sm font-bold text-gray-700 text-center mb-2">Color</label>
                   <input type="color" value={primaryColor} onChange={(e) => setPrimaryColor(e.target.value)} className="h-10 w-full rounded cursor-pointer border-0 p-0 shadow-sm" />
                 </div>
               </div>
@@ -351,17 +383,12 @@ function OnboardingContent() {
                   </div>
                 ))}
               </div>
-              <div className="flex items-center gap-4 mt-2">
-                <span className="text-xs font-bold text-gray-400 uppercase">O sube tu imagen:</span>
-                <input type="file" accept="image/*" onChange={handleBgChange} className="text-gray-900 placeholder-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:font-bold file:bg-purple-50 file:text-purple-700 border border-gray-200 p-2 rounded-xl text-sm" />
-              </div>
             </div>
           </div>
 
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-4">
             <h2 className="text-xl font-black text-gray-900 border-b pb-2">2. Inteligencia Artificial</h2>
-            <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none text-gray-900 placeholder-gray-400" 
-            />
+            <textarea required value={aiPrompt} onChange={(e) => setAiPrompt(e.target.value)} rows={3} placeholder="Define la personalidad de tu IA..." className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-medium focus:ring-2 focus:ring-blue-500 outline-none resize-none text-gray-900 placeholder-gray-400" />
           </div>
 
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6">
@@ -370,12 +397,11 @@ function OnboardingContent() {
               {catalog.map((cat, catIndex) => (
                 <div key={cat.categoryId} className="p-6 bg-gray-50 border border-gray-200 rounded-2xl relative">
                   <button type="button" onClick={() => removeCategory(catIndex)} className="absolute top-4 right-4 text-red-500 text-sm font-black bg-red-50 px-3 py-1 rounded-lg hover:bg-red-100 transition-colors">X Eliminar</button>
-                  <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas, Celulares)" className="text-gray-900 placeholder-gray-400 bg-transparent font-bold text-lg outline-none mb-4 w-3/4 border-b border-gray-300 pb-1 focus:border-blue-500" />
+                  <input type="text" value={cat.categoryName} onChange={(e) => updateCategoryName(e.target.value, catIndex)} placeholder="Categoría (Ej. Bebidas)" className="text-gray-900 placeholder-gray-400 bg-transparent font-bold text-lg outline-none mb-4 w-3/4 border-b border-gray-300 pb-1 focus:border-blue-500" />
                   
                   <div className="space-y-3">
                     {cat.items.map((item, itemIndex) => (
                       <div key={item.id} className="flex flex-col md:flex-row gap-4 bg-white p-4 rounded-xl border border-gray-100 items-start md:items-center">
-                        
                         <div className="shrink-0 w-full md:w-24 h-32 md:h-24 flex justify-center">
                           <label className="cursor-pointer w-full h-full bg-blue-50 text-blue-500 rounded-xl hover:bg-blue-100 transition-colors flex items-center justify-center relative overflow-hidden border border-blue-100 shadow-sm" title="Subir Foto del Producto">
                             {item.imageUrl ? (
@@ -413,35 +439,65 @@ function OnboardingContent() {
             </div>
           </div>
 
-          {/* 🚀 MÓDULO FINANCIERO TIER 1 (LA BÓVEDA) */}
+          {/* 🚀 MÓDULO FINANCIERO TIER 1 (LA BÓVEDA CON ESCÁNER) */}
           <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 space-y-6 relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1 bg-blue-600"></div>
             <h2 className="text-xl font-black text-gray-900 border-b pb-2 flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-blue-600" /> 4. Integración Financiera (Mercado Pago)
+              <CreditCard className="w-5 h-5 text-blue-600" /> 4. Integración Financiera
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              
               <div className="space-y-2">
                 <label className="block text-sm font-bold text-gray-700">Access Token (Producción)</label>
-                <input 
-                  type="password" 
-                  value={mpAccessToken} 
-                  onChange={(e) => setMpAccessToken(e.target.value)} 
-                  placeholder="APP_USR-..." 
-                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
-                />
-                <p className="text-xs text-gray-500">Credencial segura para cobros online. (Déjalo en blanco si solo usará WhatsApp).</p>
+                <div className="flex gap-2">
+                  <input 
+                    type="password" 
+                    value={mpAccessToken} 
+                    onChange={(e) => setMpAccessToken(e.target.value)} 
+                    placeholder="APP_USR-..." 
+                    className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
+                  />
+                  <button 
+                    type="button" 
+                    onClick={handleSearchDevices} 
+                    disabled={isSearchingDevices}
+                    className="px-4 py-2 bg-blue-50 text-blue-600 border border-blue-200 rounded-xl font-bold hover:bg-blue-100 transition-colors shrink-0 flex items-center gap-2"
+                  >
+                    {isSearchingDevices ? <Loader2 className="w-5 h-5 animate-spin" /> : <Search className="w-5 h-5" />}
+                  </button>
+                </div>
+                <p className="text-xs text-gray-500">Pégalo y usa la lupa para buscar terminales automáticamente.</p>
               </div>
+
               <div className="space-y-2">
-                <label className="block text-sm font-bold text-gray-700">ID de Terminal (Device ID)</label>
-                <input 
-                  type="text" 
-                  value={mpDeviceId} 
-                  onChange={(e) => setMpDeviceId(e.target.value)} 
-                  placeholder="Ej. PAX_A910_..." 
-                  className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
-                />
-                <p className="text-xs text-gray-500">Requerido solo si el cliente usará una terminal física (Point Smart / Plus).</p>
+                <label className="block text-sm font-bold text-gray-700">Terminal Física Asignada</label>
+                {foundDevices.length > 0 ? (
+                  <select 
+                    value={mpDeviceId} 
+                    onChange={(e) => setMpDeviceId(e.target.value)} 
+                    className="w-full text-gray-900 bg-green-50 border border-green-200 rounded-xl px-4 py-3 focus:outline-none focus:border-green-500 font-bold"
+                  >
+                    <option value="">Selecciona una terminal...</option>
+                    {foundDevices.map(device => (
+                      <option key={device.id} value={device.id}>Terminal ID: {device.id}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input 
+                    type="text" 
+                    value={mpDeviceId} 
+                    onChange={(e) => setMpDeviceId(e.target.value)} 
+                    placeholder="Ej. PAX_A910_... (O usa el buscador)" 
+                    className="w-full text-gray-900 placeholder-gray-400 border border-gray-200 rounded-xl px-4 py-3 focus:outline-none focus:border-blue-500 font-medium bg-gray-50" 
+                  />
+                )}
+                {deviceSearchMsg && (
+                  <p className={`text-xs font-bold ${deviceSearchMsg.includes("✅") ? "text-green-600" : "text-amber-600"}`}>
+                    {deviceSearchMsg}
+                  </p>
+                )}
               </div>
+
             </div>
           </div>
 
