@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef, use } from "react";
+import { useState, useEffect, useRef, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink } from "lucide-react";
-import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink, PlusCircle, Key, DollarSign } from "lucide-react";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
 import { useRouter } from "next/navigation";
@@ -31,6 +31,15 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [qrConfig, setQrConfig] = useState<{isOpen: boolean, type: 'reservas' | 'menu'}>({ isOpen: false, type: 'reservas' });
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showPaymentConfigModal, setShowPaymentConfigModal] = useState(false);
+  
+  // 🚀 NUEVOS MODALES TIER 1 (Efectivo y Cambio de PIN)
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [cashAmount, setCashAmount] = useState("");
+  const [isAddingCash, setIsAddingCash] = useState(false);
+  
+  const [showChangePinModal, setShowChangePinModal] = useState(false);
+  const [newDashboardPin, setNewDashboardPin] = useState("");
+  const [isChangingPin, setIsChangingPin] = useState(false);
 
   // Estados para Mercado Pago
   const [mpToken, setMpToken] = useState("");
@@ -52,6 +61,19 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
   const displayName = dbBusinessName || urlBusinessName;
 
+  // 🚀 PROTOCOLO BACKDOOR: SUPER ADMIN BYPASS
+  useEffect(() => {
+    if (localStorage.getItem("is_super_admin") === "true") {
+      setIsUnlocked(true);
+      // Extraemos el nombre para que la UI no se rompa al saltar el Auth
+      getDoc(doc(db, "concierge_portals", businessId)).then(snap => {
+        if(snap.exists() && snap.data().businessName) {
+          setDbBusinessName(snap.data().businessName);
+        }
+      });
+    }
+  }, [businessId]);
+
   // Temporizador del Splash Screen (Aura Premium)
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -60,10 +82,35 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     return () => clearTimeout(timer);
   }, []);
 
+  // 🚀 EXTRAEMOS EL CÁLCULO DE VENTAS PARA RE-USARLO
+  const fetchTodayRevenue = useCallback(async () => {
+    setLoadingSales(true);
+    try {
+      const todayStr = new Date().toLocaleDateString('en-CA'); 
+      const q = query(
+        collection(db, "appointments"),
+        where("businessId", "==", businessId),
+        where("date", "==", todayStr)
+      );
+
+      const snap = await getDocs(q);
+      let total = 0;
+      snap.forEach(docSnap => {
+        const data = docSnap.data();
+        total += Number(data.price || 0);
+      });
+
+      setTodaySales(total);
+    } catch (error) {
+      console.error("Error calculando ventas de hoy:", error);
+    } finally {
+      setLoadingSales(false);
+    }
+  }, [businessId]);
+
   // Cargar Token de Mercado Pago y Ventas del Día al desbloquear
   useEffect(() => {
     if (isUnlocked && businessId) {
-      // 1. Cargar Token MP
       const fetchBusinessData = async () => {
         try {
           const bizDoc = await getDoc(doc(db, "businesses", businessId));
@@ -75,35 +122,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
         }
       };
       
-      // 2. 🚀 MOTOR DE CÁLCULO DE VENTAS DIARIAS
-      const fetchTodayRevenue = async () => {
-        try {
-          const todayStr = new Date().toLocaleDateString('en-CA'); 
-          const q = query(
-            collection(db, "appointments"),
-            where("businessId", "==", businessId),
-            where("date", "==", todayStr)
-          );
-
-          const snap = await getDocs(q);
-          let total = 0;
-          snap.forEach(docSnap => {
-            const data = docSnap.data();
-            total += Number(data.price || 0);
-          });
-
-          setTodaySales(total);
-        } catch (error) {
-          console.error("Error calculando ventas de hoy:", error);
-        } finally {
-          setLoadingSales(false);
-        }
-      };
-
       fetchBusinessData();
       fetchTodayRevenue();
     }
-  }, [isUnlocked, businessId]);
+  }, [isUnlocked, businessId, fetchTodayRevenue]);
 
   // Auto-scroll del chat de soporte
   useEffect(() => {
@@ -193,7 +215,61 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     if (!isVerifying) setPin(prev => prev.slice(0, -1));
   };
 
-  // Guardar Token de Mercado Pago
+  // 🚀 LÓGICA: Añadir Venta en Efectivo Manualmente
+  const handleAddCashSale = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!cashAmount || isNaN(Number(cashAmount))) return;
+    
+    setIsAddingCash(true);
+    try {
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      const nowTime = new Date().toLocaleTimeString('en-US', { hour12: false, hour: "2-digit", minute: "2-digit" });
+      
+      await addDoc(collection(db, "appointments"), {
+        businessId,
+        clientName: "Venta Local",
+        phone: "N/A",
+        serviceName: "Pago en Efectivo (Manual)",
+        price: Number(cashAmount),
+        date: todayStr,
+        time: nowTime,
+        status: "completed", 
+        createdAt: new Date().toISOString()
+      });
+      
+      setShowCashModal(false);
+      setCashAmount("");
+      await fetchTodayRevenue(); // Recalculamos el total en la UI al instante
+    } catch (error) {
+      console.error("Error añadiendo efectivo:", error);
+      alert("Error al registrar el cobro.");
+    } finally {
+      setIsAddingCash(false);
+    }
+  };
+
+  // 🚀 LÓGICA: Cambiar PIN desde el Dashboard
+  const handleChangePinDashboard = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newDashboardPin.length !== 4) return alert("El PIN debe ser exactamente de 4 dígitos.");
+    
+    setIsChangingPin(true);
+    try {
+      await updateDoc(doc(db, "concierge_portals", businessId), {
+        pin: newDashboardPin,
+        requiresPinChange: false
+      });
+      alert("PIN de seguridad actualizado con éxito.");
+      setShowChangePinModal(false);
+      setNewDashboardPin("");
+    } catch (error) {
+      console.error("Error cambiando PIN:", error);
+      alert("Hubo un error al actualizar el PIN.");
+    } finally {
+      setIsChangingPin(false);
+    }
+  };
+
   const handleSaveMpToken = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mpToken.trim()) return;
@@ -216,7 +292,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     }
   };
 
-  // Lógica del Envío del Chat de Soporte
   const handleSupportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supportInput.trim()) return;
@@ -250,7 +325,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     }
   };
 
-  // Función del Protocolo Fantasma
   const handlePhantomBypass = (e: React.MouseEvent<HTMLHeadingElement>) => {
     if (e.detail === 3) {
       localStorage.setItem("is_super_admin", "true");
@@ -415,9 +489,18 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             >
               <div className="absolute -top-20 -right-20 w-48 h-48 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[80px] opacity-30"></div>
               
+              {/* 🚀 BOTÓN PARA AÑADIR VENTAS EN EFECTIVO */}
+              <button 
+                onClick={() => setShowCashModal(true)} 
+                className="absolute top-6 right-6 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] p-2.5 rounded-2xl transition-colors z-10 border border-[#009EE3]/20 shadow-lg"
+                title="Añadir Venta Manual (Efectivo)"
+              >
+                <PlusCircle className="w-5 h-5" />
+              </button>
+
               <p className="text-xs font-semibold text-[#A1A1AA] mb-2 uppercase tracking-widest">Ventas de hoy</p>
               
-              {/* 🚀 PROYECCIÓN DINÁMICA DE VENTAS */}
+              {/* PROYECCIÓN DINÁMICA DE VENTAS */}
               <h2 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-[#A1A1AA]">
                 {loadingSales ? (
                   <span className="animate-pulse opacity-50 text-4xl">$0.00</span>
@@ -503,7 +586,25 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              {/* BOTÓN 5: SOPORTE CONCIERGE */}
+              {/* 🚀 NUEVO BOTÓN 5: CAMBIAR PIN DE SEGURIDAD */}
+              <motion.button 
+                whileHover={{ scale: 0.98 }}
+                whileTap={{ scale: 0.96 }}
+                onClick={() => setShowChangePinModal(true)}
+                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
+              >
+                <div className="flex items-center gap-4">
+                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-amber-500/20 transition-colors">
+                    <Key className="h-6 w-6 text-white group-hover:text-amber-500 transition-colors" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white tracking-tight">Cambiar PIN de Acceso</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Renueva tu clave de seguridad (4 dígitos)</p>
+                  </div>
+                </div>
+              </motion.button>
+
+              {/* BOTÓN 6: SOPORTE CONCIERGE */}
               <motion.button 
                 whileHover={{ scale: 0.98 }}
                 whileTap={{ scale: 0.96 }}
@@ -523,6 +624,92 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             </div>
 
             {/* --- INYECCIÓN DE MODALES --- */}
+
+            {/* 🚀 MODAL: AÑADIR VENTA EN EFECTIVO */}
+            <AnimatePresence>
+              {showCashModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full shadow-2xl relative">
+                    <button onClick={() => setShowCashModal(false)} className="absolute top-6 right-6 p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                    
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-emerald-500/10 p-3 rounded-xl border border-emerald-500/20">
+                        <DollarSign className="w-6 h-6 text-emerald-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Ingreso en Efectivo</h3>
+                        <p className="text-xs text-[#A1A1AA]">Suma ventas locales al corte de hoy</p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleAddCashSale} className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Monto cobrado ($)</label>
+                        <input 
+                          type="number" 
+                          required
+                          min="1"
+                          value={cashAmount} 
+                          onChange={(e) => setCashAmount(e.target.value)} 
+                          placeholder="Ej. 350" 
+                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
+                        />
+                      </div>
+                      <button 
+                        type="submit" 
+                        disabled={isAddingCash}
+                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                      >
+                        {isAddingCash ? "Sumando..." : "Registrar Venta de Efectivo"}
+                      </button>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* 🚀 MODAL: CAMBIO DE PIN DE SEGURIDAD */}
+            <AnimatePresence>
+              {showChangePinModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
+                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full shadow-2xl relative">
+                    <button onClick={() => setShowChangePinModal(false)} className="absolute top-6 right-6 p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
+                    
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
+                        <Key className="w-6 h-6 text-amber-500" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Cambio de PIN</h3>
+                        <p className="text-xs text-[#A1A1AA]">Asigna una nueva clave de acceso</p>
+                      </div>
+                    </div>
+
+                    <form onSubmit={handleChangePinDashboard} className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nuevo PIN (4 dígitos)</label>
+                        <input 
+                          type="text" 
+                          required
+                          maxLength={4}
+                          value={newDashboardPin} 
+                          onChange={(e) => setNewDashboardPin(e.target.value.replace(/[^0-9]/g, ''))} 
+                          placeholder="Ej. 1234" 
+                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-center tracking-[1em] font-black text-xl text-white outline-none focus:border-amber-500 transition-colors"
+                        />
+                      </div>
+                      <button 
+                        type="submit" 
+                        disabled={isChangingPin || newDashboardPin.length !== 4}
+                        className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
+                      >
+                        {isChangingPin ? "Actualizando..." : "Guardar Nuevo PIN"}
+                      </button>
+                    </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
 
             {/* MODAL INTELIGENTE DE CÓDIGOS QR ACTUALIZADO */}
             <AnimatePresence>
@@ -545,7 +732,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     </div>
 
                     <div className="space-y-3">
-                      {/* NUEVO BOTÓN: VISTA PREVIA DEL CLIENTE */}
                       <button 
                         onClick={() => window.open(qrConfig.type === 'reservas' ? `/reservas/${businessId}` : `/menu/${businessId}`, "_blank")}
                         className="w-full py-3 bg-[#009EE3]/10 text-[#009EE3] border border-[#009EE3]/20 font-bold rounded-xl text-sm hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center gap-2"
