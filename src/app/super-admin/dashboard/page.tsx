@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2, Clock } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "@/lib/firebase";
 
 interface Business {
   id: string;
@@ -30,9 +31,9 @@ const PREMIUM_BACKGROUNDS = [
   { id: "bg-abstract", name: "Ondas Premium", src: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=500&q=80" }
 ];
 
-// 🚀 TIER 1: Estructura Inicial del Horario (Lunes a Domingo)
+// 🚀 Estructura Inicial del Horario
 const DEFAULT_SCHEDULE = {
-  interval: 30, // Duración de cada cita en minutos
+  interval: 30,
   days: {
     lunes: { active: true, open: "09:00", close: "18:00" },
     martes: { active: true, open: "09:00", close: "18:00" },
@@ -65,14 +66,10 @@ export default function SuperAdminDashboard() {
     mpDeviceId: ""
   });
   
-  // ESTADO DEL HORARIO
   const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE);
-
-  // ESTADOS DE MERCADO PAGO
   const [foundDevices, setFoundDevices] = useState<any[]>([]);
   const [isSearchingDevices, setIsSearchingDevices] = useState(false);
   const [deviceSearchMsg, setDeviceSearchMsg] = useState("");
-
   const [catalog, setCatalog] = useState([{ name: "", description: "", price: "", imageUrl: "" }]);
   const [creating, setCreating] = useState(false);
 
@@ -154,10 +151,7 @@ export default function SuperAdminDashboard() {
   const updateScheduleDay = (day: keyof typeof DEFAULT_SCHEDULE.days, field: string, value: any) => {
     setSchedule(prev => ({
       ...prev,
-      days: {
-        ...prev.days,
-        [day]: { ...prev.days[day], [field]: value }
-      }
+      days: { ...prev.days, [day]: { ...prev.days[day], [field]: value } }
     }));
   };
 
@@ -169,27 +163,64 @@ export default function SuperAdminDashboard() {
 
     setCreating(true);
     try {
+      let finalLogoUrl = form.logoUrl;
+      let finalBgUrl = form.backgroundUrl;
+
+      // 🚀 SISTEMA DE SUBIDA A STORAGE (TIER 1)
+      const uploadBase64ToStorage = async (base64Data: string, path: string) => {
+        if (!base64Data.startsWith("data:image")) return base64Data; // Ya es URL
+        const res = await fetch(base64Data);
+        const blob = await res.blob();
+        const fileRef = ref(storage, path);
+        await uploadBytes(fileRef, blob);
+        return await getDownloadURL(fileRef);
+      };
+
+      if (form.logoUrl.startsWith("data:image")) {
+        finalLogoUrl = await uploadBase64ToStorage(form.logoUrl, `businesses/${form.businessId}/logo_${Date.now()}`);
+      }
+      if (form.backgroundUrl.startsWith("data:image")) {
+        finalBgUrl = await uploadBase64ToStorage(form.backgroundUrl, `businesses/${form.businessId}/bg_${Date.now()}`);
+      }
+
+      const formattedCatalog = await Promise.all(
+        catalog.filter(item => item.name.trim() !== "").map(async (item, index) => {
+          let finalItemImageUrl = item.imageUrl;
+          if (finalItemImageUrl.startsWith("data:image")) {
+            finalItemImageUrl = await uploadBase64ToStorage(
+              finalItemImageUrl, 
+              `businesses/${form.businessId}/catalog_${Date.now()}_${index}`
+            );
+          }
+          return {
+            id: `item-${Date.now()}-${index}`, 
+            name: item.name, 
+            description: item.description, 
+            price: parseFloat(item.price) || 0, 
+            imageUrl: finalItemImageUrl 
+          };
+        })
+      );
+
       const batch = writeBatch(db);
 
-      // 1. Guardar Ecosistema + HORARIO 
       const bizRef = doc(db, "businesses", form.businessId);
       batch.set(bizRef, {
         businessName: form.businessName,
         businessType: form.businessType,
         phone: form.phone,
         aiPromptContext: form.aiPrompt,
-        schedule: schedule, // 👈 INYECCIÓN DEL HORARIO EN LA BASE DE DATOS
+        schedule: schedule, 
         brandSettings: { 
           primaryColor: form.primaryColor, 
-          backgroundUrl: form.backgroundUrl, 
-          logoUrl: form.logoUrl 
+          backgroundUrl: finalBgUrl, 
+          logoUrl: finalLogoUrl 
         },
         mercadopagoAccessToken: form.mpAccessToken.trim(),
         mercadopagoDeviceId: form.mpDeviceId.trim(),
         createdAt: new Date().toISOString()
       });
 
-      // 2. Portal de Administrador (Concierge)
       const conciergeRef = doc(db, "concierge_portals", form.businessId);
       batch.set(conciergeRef, { 
         businessName: form.businessName, 
@@ -199,27 +230,21 @@ export default function SuperAdminDashboard() {
         requiresPinChange: true 
       });
 
-      // 3. Catálogo Inicial
       const menuRef = doc(db, "menus", form.businessId);
-      const formattedCatalog = catalog.filter(item => item.name.trim() !== "").map((item, index) => ({
-        id: `item-${Date.now()}-${index}`, 
-        name: item.name, 
-        description: item.description, 
-        price: parseFloat(item.price) || 0, 
-        imageUrl: item.imageUrl || "" 
-      }));
       batch.set(menuRef, { catalog: formattedCatalog });
 
       await batch.commit();
       
       alert(`¡Plataforma desplegada con éxito!\nID: ${form.businessId}`);
+      
       setForm({ ...form, businessName: "", businessId: "", phone: "", accessPin: "", logoUrl: "", mpAccessToken: "", mpDeviceId: "" }); 
       setSchedule(DEFAULT_SCHEDULE);
       setFoundDevices([]); setDeviceSearchMsg(""); setCatalog([{ name: "", description: "", price: "", imageUrl: "" }]); 
       setActiveTab("list"); fetchBusinesses();
+      
     } catch (error) { 
-      console.error(error); 
-      alert("Error al guardar."); 
+      console.error("Error guardando plataforma:", error); 
+      alert("Error al guardar en la base de datos."); 
     } finally { 
       setCreating(false); 
     }
@@ -497,7 +522,7 @@ export default function SuperAdminDashboard() {
                 </div>
               </div>
 
-              {/* 🚀 NUEVO BLOQUE: HORARIOS Y RESERVAS */}
+              {/* 5. HORARIOS Y RESERVAS */}
               <div className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] shadow-2xl space-y-6">
                 <h2 className="text-xl font-bold text-white border-b border-[#27272A] pb-4 flex items-center gap-2">
                   <Clock className="w-5 h-5 text-[#009EE3]" /> 5. Horarios de Operación
@@ -568,7 +593,7 @@ export default function SuperAdminDashboard() {
               </div>
 
               <button type="submit" disabled={creating} className="w-full py-5 bg-gradient-to-r from-[#009EE3] to-[#06B6D4] text-white font-black text-lg rounded-2xl shadow-[0_0_20px_rgba(0,158,227,0.3)] hover:opacity-95 transition-all disabled:opacity-50 hover:scale-[1.01] active:scale-95">
-                {creating ? "Construyendo Infraestructura..." : "Desplegar Plataforma Completa"}
+                {creating ? "Desplegando Servidores..." : "Desplegar Plataforma Completa"}
               </button>
             </form>
           </motion.div>
