@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2, Clock } from "lucide-react";
+import { Building2, PlusCircle, Trash2, Edit3, ExternalLink, ShieldCheck, LogOut, Search, Palette, Image as ImageIcon, Upload, QrCode, CreditCard, Loader2, Clock, KeyRound } from "lucide-react";
 import { collection, getDocs, doc, deleteDoc, writeBatch } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "@/lib/firebase";
@@ -325,6 +325,16 @@ export default function SuperAdminDashboard() {
                        >
                          <QrCode className="w-3.5 h-3.5" /> Llave QR
                        </button>
+
+                       {/* 🚀 NUEVO BOTÓN EXCLUSIVO SUPER ADMIN (BYPASS DE NIP) */}
+                       <button 
+                         onClick={() => window.open(`/portal/${biz.id}?bypass=true`, "_blank")} 
+                         className="px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-bold rounded-xl transition-colors flex items-center gap-1 border border-amber-500/20 shadow-lg"
+                         title="Entrada Directa como Super Admin (Sin NIP)"
+                       >
+                         <KeyRound className="w-3.5 h-3.5" /> Admin
+                       </button>
+
                      </div>
                      <div className="flex items-center gap-2">
                        <button onClick={() => router.push(`/admin/onboarding?businessId=${biz.id}`)} className="p-2 bg-[#27272A] hover:bg-amber-500/20 text-amber-400 rounded-xl transition-colors" title="Editar Catálogo"><Edit3 className="w-4 h-4" /></button>
@@ -335,7 +345,7 @@ export default function SuperAdminDashboard() {
                ))}
              </div>
            )}
-         </div>
+          </div>
         )}
 
         {/* --- PESTAÑA 2: FÁBRICA COMPLETA --- */}
