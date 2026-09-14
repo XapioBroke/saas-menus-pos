@@ -20,10 +20,13 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [hasError, setHasError] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
   const [dbBusinessName, setDbBusinessName] = useState("");
+  
+  // Estados para Cambio de PIN
   const [requiresPinChange, setRequiresPinChange] = useState(false);
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
+  const [isManualPinChange, setIsManualPinChange] = useState(false); // 👈 Nuevo estado para iniciar cambio manual
 
-  // 🚀 ESTADOS DE VENTAS REALES
+  // ESTADOS DE VENTAS REALES
   const [todaySales, setTodaySales] = useState<number>(0);
   const [loadingSales, setLoadingSales] = useState(true);
 
@@ -32,21 +35,17 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showPaymentConfigModal, setShowPaymentConfigModal] = useState(false);
   
-  // 🚀 NUEVOS MODALES TIER 1 (Efectivo y Cambio de PIN)
+  // Modal de Efectivo
   const [showCashModal, setShowCashModal] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
   const [isAddingCash, setIsAddingCash] = useState(false);
-  
-  const [showChangePinModal, setShowChangePinModal] = useState(false);
-  const [newDashboardPin, setNewDashboardPin] = useState("");
-  const [isChangingPin, setIsChangingPin] = useState(false);
 
   // Estados para Mercado Pago
   const [mpToken, setMpToken] = useState("");
   const [isSavingToken, setIsSavingToken] = useState(false);
   const [tokenSavedMsg, setTokenSavedMsg] = useState(false);
 
-  // Estados para el Chat Inteligente de Soporte (Concierge)
+  // Estados Soporte (Concierge)
   const [supportMessages, setSupportMessages] = useState<{role: string, content: string}[]>([
     { role: "assistant", content: "Hola, soy el equipo de Soporte de MiTerminal. ¿En qué puedo ayudarte hoy?" }
   ]);
@@ -61,11 +60,12 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
   const displayName = dbBusinessName || urlBusinessName;
 
-  // 🚀 PROTOCOLO BACKDOOR: SUPER ADMIN BYPASS
+  // 🚀 PROTOCOLO BACKDOOR TIER 1: Vía Parámetro URL Seguro
   useEffect(() => {
-    if (localStorage.getItem("is_super_admin") === "true") {
+    // Leemos la URL sin romper el enrutador de Next.js
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('bypass') === 'true') {
       setIsUnlocked(true);
-      // Extraemos el nombre para que la UI no se rompa al saltar el Auth
       getDoc(doc(db, "concierge_portals", businessId)).then(snap => {
         if(snap.exists() && snap.data().businessName) {
           setDbBusinessName(snap.data().businessName);
@@ -74,15 +74,11 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     }
   }, [businessId]);
 
-  // Temporizador del Splash Screen (Aura Premium)
   useEffect(() => {
-    const timer = setTimeout(() => {
-      setShowSplash(false);
-    }, 1800);
+    const timer = setTimeout(() => { setShowSplash(false); }, 1800);
     return () => clearTimeout(timer);
   }, []);
 
-  // 🚀 EXTRAEMOS EL CÁLCULO DE VENTAS PARA RE-USARLO
   const fetchTodayRevenue = useCallback(async () => {
     setLoadingSales(true);
     try {
@@ -99,7 +95,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
         const data = docSnap.data();
         total += Number(data.price || 0);
       });
-
       setTodaySales(total);
     } catch (error) {
       console.error("Error calculando ventas de hoy:", error);
@@ -108,7 +103,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     }
   }, [businessId]);
 
-  // Cargar Token de Mercado Pago y Ventas del Día al desbloquear
   useEffect(() => {
     if (isUnlocked && businessId) {
       const fetchBusinessData = async () => {
@@ -118,23 +112,21 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             setMpToken(bizDoc.data().mercadopagoAccessToken);
           }
         } catch (error) {
-          console.error("Error obteniendo datos del negocio:", error);
+          console.error("Error obteniendo datos:", error);
         }
       };
-      
       fetchBusinessData();
       fetchTodayRevenue();
     }
   }, [isUnlocked, businessId, fetchTodayRevenue]);
 
-  // Auto-scroll del chat de soporte
   useEffect(() => {
     if (showSupportModal) {
       supportEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [supportMessages, isSupportTyping, showSupportModal]);
 
-  // Lógica del Teclado Numérico de Seguridad
+  // 🚀 LÓGICA DE TECLADO INTELIGENTE (LOGIN + CAMBIO DE PIN)
   const handleKeypad = async (num: string) => {
     if (isVerifying || pin.length >= 4) return;
     
@@ -144,6 +136,31 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     if (nextPin.length === 4) {
       setIsVerifying(true);
 
+      // --- FLUJO 1: EL DUEÑO PIDIÓ CAMBIAR SU PIN MANUALMENTE ---
+      if (isManualPinChange) {
+        try {
+          const docRef = doc(db, "concierge_portals", businessId);
+          const docSnap = await getDoc(docRef);
+          
+          if (docSnap.exists() && docSnap.data().pin === nextPin) {
+            // El PIN actual es correcto. Pasamos al modo de crear uno nuevo.
+            setIsManualPinChange(false);
+            setRequiresPinChange(true);
+            setNewPinConfig({ step: 1, firstPin: "" });
+            setTimeout(() => {
+              setPin("");
+              setIsVerifying(false);
+            }, 400);
+          } else {
+            triggerError(); // PIN actual incorrecto
+          }
+        } catch (error) {
+          triggerError();
+        }
+        return; // Salimos de la función aquí para no cruzar flujos
+      }
+
+      // --- FLUJO 2: INGRESO NORMAL ---
       if (!requiresPinChange) {
         try {
           const docRef = doc(db, "concierge_portals", businessId);
@@ -168,7 +185,9 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           console.error("Error Firebase:", error);
           triggerError();
         }
-      } else {
+      } 
+      // --- FLUJO 3: CONFIGURANDO EL NUEVO PIN ---
+      else {
         if (newPinConfig.step === 1) {
           setNewPinConfig({ step: 2, firstPin: nextPin });
           setTimeout(() => {
@@ -183,12 +202,13 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 pin: nextPin, 
                 requiresPinChange: false 
               });
+              // Si todo salió bien, lo dejamos pasar al dashboard
               setTimeout(() => setIsUnlocked(true), 300);
             } catch (error) {
-              console.error("Error actualizando PIN:", error);
               triggerError();
             }
           } else {
+            // Los PINs nuevos no coinciden
             setHasError(true);
             setTimeout(() => {
               setPin("");
@@ -215,7 +235,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     if (!isVerifying) setPin(prev => prev.slice(0, -1));
   };
 
-  // 🚀 LÓGICA: Añadir Venta en Efectivo Manualmente
   const handleAddCashSale = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cashAmount || isNaN(Number(cashAmount))) return;
@@ -239,53 +258,23 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
       
       setShowCashModal(false);
       setCashAmount("");
-      await fetchTodayRevenue(); // Recalculamos el total en la UI al instante
+      await fetchTodayRevenue();
     } catch (error) {
-      console.error("Error añadiendo efectivo:", error);
       alert("Error al registrar el cobro.");
     } finally {
       setIsAddingCash(false);
     }
   };
 
-  // 🚀 LÓGICA: Cambiar PIN desde el Dashboard
-  const handleChangePinDashboard = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (newDashboardPin.length !== 4) return alert("El PIN debe ser exactamente de 4 dígitos.");
-    
-    setIsChangingPin(true);
-    try {
-      await updateDoc(doc(db, "concierge_portals", businessId), {
-        pin: newDashboardPin,
-        requiresPinChange: false
-      });
-      alert("PIN de seguridad actualizado con éxito.");
-      setShowChangePinModal(false);
-      setNewDashboardPin("");
-    } catch (error) {
-      console.error("Error cambiando PIN:", error);
-      alert("Hubo un error al actualizar el PIN.");
-    } finally {
-      setIsChangingPin(false);
-    }
-  };
-
   const handleSaveMpToken = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!mpToken.trim()) return;
-    
     setIsSavingToken(true);
     try {
-      await updateDoc(doc(db, "businesses", businessId), {
-        mercadopagoAccessToken: mpToken.trim()
-      });
+      await updateDoc(doc(db, "businesses", businessId), { mercadopagoAccessToken: mpToken.trim() });
       setTokenSavedMsg(true);
-      setTimeout(() => {
-        setTokenSavedMsg(false);
-        setShowPaymentConfigModal(false);
-      }, 2000);
+      setTimeout(() => { setTokenSavedMsg(false); setShowPaymentConfigModal(false); }, 2000);
     } catch (error) {
-      console.error("Error guardando token:", error);
       alert("Error al guardar credenciales");
     } finally {
       setIsSavingToken(false);
@@ -295,51 +284,45 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const handleSupportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!supportInput.trim()) return;
-
     const userMsg = supportInput;
     setSupportMessages(prev => [...prev, { role: "user", content: userMsg }]);
     setSupportInput("");
     setIsSupportTyping(true);
     setNeedsHuman(false);
-
     try {
       const res = await fetch('/api/concierge', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...supportMessages, { role: "user", content: userMsg }]
-        })
+        body: JSON.stringify({ messages: [...supportMessages, { role: "user", content: userMsg }] })
       });
       const data = await res.json();
-      
-      if (data.reply) {
-        setSupportMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
-      }
-      if (data.escalate) {
-        setNeedsHuman(true);
-      }
+      if (data.reply) setSupportMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
+      if (data.escalate) setNeedsHuman(true);
     } catch (error) {
-      setSupportMessages(prev => [...prev, { role: "assistant", content: "Error de conexión. Intenta de nuevo." }]);
+      setSupportMessages(prev => [...prev, { role: "assistant", content: "Error de conexión." }]);
     } finally {
       setIsSupportTyping(false);
     }
   };
 
-  const handlePhantomBypass = (e: React.MouseEvent<HTMLHeadingElement>) => {
-    if (e.detail === 3) {
-      localStorage.setItem("is_super_admin", "true");
-      router.push('/super-admin/dashboard');
-    }
-  };
-
+  // 🚀 RENDER DINÁMICO DEL HEADER DE LA PANTALLA DE BLOQUEO
   const renderSecurityHeader = () => {
+    if (isManualPinChange) {
+      return (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
+          <Key className="w-8 h-8 text-amber-500 mb-6" />
+          <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Cambio de PIN</h2>
+          <p className="text-sm text-[#A1A1AA] mb-12 text-center">Ingresa tu PIN actual por seguridad</p>
+        </motion.div>
+      );
+    }
     if (!requiresPinChange) {
       return (
-        <>
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
           <Lock className="w-8 h-8 text-[#009EE3] mb-6" />
           <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Acceso a {displayName}</h2>
           <p className="text-sm text-[#A1A1AA] mb-12 text-center">Ingresa tu PIN de 4 dígitos para acceder</p>
-        </>
+        </motion.div>
       );
     }
     if (newPinConfig.step === 1) {
@@ -347,7 +330,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
           <ShieldCheck className="w-8 h-8 text-[#06B6D4] mb-6" />
           <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Crea tu nuevo PIN</h2>
-          <p className="text-sm text-[#A1A1AA] mb-12 text-center">Por seguridad, establece un PIN definitivo</p>
+          <p className="text-sm text-[#A1A1AA] mb-12 text-center">Escribe 4 dígitos que recordarás fácilmente</p>
         </motion.div>
       );
     }
@@ -355,7 +338,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="flex flex-col items-center">
         <ShieldCheck className="w-8 h-8 text-[#009EE3] mb-6" />
         <h2 className="text-2xl font-semibold tracking-tight mb-2 text-center">Confirma tu PIN</h2>
-        <p className="text-sm text-[#A1A1AA] mb-12 text-center">Vuelve a ingresar los 4 dígitos</p>
+        <p className="text-sm text-[#A1A1AA] mb-12 text-center">Vuelve a ingresar los mismos 4 dígitos</p>
       </motion.div>
     );
   };
@@ -391,7 +374,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           </motion.div>
         ) : !isUnlocked ? (
           
-          /* 2. PANTALLA DEL PIN */
+          /* 2. PANTALLA DEL PIN CON GESTIÓN INTEGRADA */
           <motion.div
             key="lock-screen"
             initial={{ opacity: 0 }}
@@ -404,53 +387,48 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             {renderSecurityHeader()}
 
-            <motion.div 
-              animate={hasError ? { x: [-10, 10, -10, 10, 0] } : {}}
-              transition={{ duration: 0.4 }}
-              className="flex gap-4 mb-16"
-            >
+            <motion.div animate={hasError ? { x: [-10, 10, -10, 10, 0] } : {}} transition={{ duration: 0.4 }} className="flex gap-4 mb-16">
               {[...Array(4)].map((_, i) => (
-                <div 
-                  key={i} 
-                  className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${
-                    i < pin.length 
-                      ? hasError ? "bg-red-500 border-red-500" : "bg-[#06B6D4] border-[#06B6D4]" 
-                      : "border-[#27272A] bg-transparent"
-                  }`}
-                />
+                <div key={i} className={`w-4 h-4 rounded-full border-2 transition-all duration-300 ${i < pin.length ? hasError ? "bg-red-500 border-red-500" : "bg-[#06B6D4] border-[#06B6D4]" : "border-[#27272A] bg-transparent"}`} />
               ))}
             </motion.div>
 
             <div className="grid grid-cols-3 gap-x-8 gap-y-6 w-full max-w-[280px]">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                <motion.button
-                  key={num}
-                  whileTap={{ scale: 0.9, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
-                  onClick={() => handleKeypad(num.toString())}
-                  disabled={isVerifying}
-                  className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-light hover:bg-white/5 transition-colors disabled:opacity-50"
-                >
+                <motion.button key={num} whileTap={{ scale: 0.9, backgroundColor: "rgba(255, 255, 255, 0.1)" }} onClick={() => handleKeypad(num.toString())} disabled={isVerifying} className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-light hover:bg-white/5 transition-colors disabled:opacity-50">
                   {num}
                 </motion.button>
               ))}
               <div />
-              <motion.button
-                whileTap={{ scale: 0.9, backgroundColor: "rgba(255, 255, 255, 0.1)" }}
-                onClick={() => handleKeypad("0")}
-                disabled={isVerifying}
-                className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-light hover:bg-white/5 transition-colors disabled:opacity-50"
-              >
+              <motion.button whileTap={{ scale: 0.9, backgroundColor: "rgba(255, 255, 255, 0.1)" }} onClick={() => handleKeypad("0")} disabled={isVerifying} className="w-20 h-20 rounded-full flex items-center justify-center text-3xl font-light hover:bg-white/5 transition-colors disabled:opacity-50">
                 0
               </motion.button>
-              <motion.button
-                whileTap={{ scale: 0.9 }}
-                onClick={handleDelete}
-                disabled={isVerifying}
-                className="w-20 h-20 rounded-full flex items-center justify-center text-[#A1A1AA] hover:text-white transition-colors disabled:opacity-50"
-              >
+              <motion.button whileTap={{ scale: 0.9 }} onClick={handleDelete} disabled={isVerifying} className="w-20 h-20 rounded-full flex items-center justify-center text-[#A1A1AA] hover:text-white transition-colors disabled:opacity-50">
                 <Delete className="w-8 h-8" />
               </motion.button>
             </div>
+
+            {/* 🚀 BOTONES CONTEXTUALES DE CAMBIO DE PIN EN LA PANTALLA DE BLOQUEO */}
+            {!requiresPinChange && !isManualPinChange && (
+              <button 
+                onClick={() => setIsManualPinChange(true)} 
+                disabled={isVerifying}
+                className="mt-10 text-xs font-medium text-[#A1A1AA] hover:text-white underline transition-colors"
+              >
+                Cambiar mi PIN
+              </button>
+            )}
+            
+            {isManualPinChange && (
+              <button 
+                onClick={() => { setIsManualPinChange(false); setPin(""); }} 
+                disabled={isVerifying}
+                className="mt-10 text-xs font-medium text-[#A1A1AA] hover:text-white underline transition-colors"
+              >
+                Cancelar Cambio
+              </button>
+            )}
+
           </motion.div>
         ) : (
           
@@ -464,10 +442,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           >
             <header className="mb-8 mt-4 flex items-center justify-between">
               <div>
-                <h1 
-                  onClick={handlePhantomBypass} 
-                  className="text-xl font-bold tracking-tight text-white cursor-default select-none"
-                >
+                <h1 className="text-xl font-bold tracking-tight text-white cursor-default select-none">
                   Hola, {displayName}
                 </h1>
                 <div className="flex items-center gap-2 mt-1">
@@ -489,7 +464,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
             >
               <div className="absolute -top-20 -right-20 w-48 h-48 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[80px] opacity-30"></div>
               
-              {/* 🚀 BOTÓN PARA AÑADIR VENTAS EN EFECTIVO */}
+              {/* BOTÓN PARA AÑADIR VENTAS EN EFECTIVO */}
               <button 
                 onClick={() => setShowCashModal(true)} 
                 className="absolute top-6 right-6 bg-[#009EE3]/10 hover:bg-[#009EE3]/20 text-[#009EE3] p-2.5 rounded-2xl transition-colors z-10 border border-[#009EE3]/20 shadow-lg"
@@ -516,13 +491,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             <div className="grid grid-cols-1 gap-4">
               
-              {/* BOTÓN 1: COMPARTIR QR DE RESERVAS */}
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setQrConfig({ isOpen: true, type: 'reservas' })}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
-              >
+              <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setQrConfig({ isOpen: true, type: 'reservas' })} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
                     <QrCode className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
@@ -534,13 +503,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              {/* BOTÓN 2: COMPARTIR QR DEL MENÚ / CATÁLOGO */}
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setQrConfig({ isOpen: true, type: 'menu' })}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
-              >
+              <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setQrConfig({ isOpen: true, type: 'menu' })} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
                     <Store className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
@@ -552,11 +515,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              {/* BOTÓN 3: MÓDULO DE CITAS */}
-              <Link 
-                href={`/portal/${businessId}/citas`}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block"
-              >
+              <Link href={`/portal/${businessId}/citas`} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
                     <Calendar className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
@@ -568,13 +527,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </Link>
 
-              {/* BOTÓN 4: CONFIGURACIÓN DE COBROS */}
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setShowPaymentConfigModal(true)}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
-              >
+              <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setShowPaymentConfigModal(true)} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
                     <CreditCard className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
@@ -586,31 +539,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                 </div>
               </motion.button>
 
-              {/* 🚀 NUEVO BOTÓN 5: CAMBIAR PIN DE SEGURIDAD */}
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setShowChangePinModal(true)}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-amber-500/20 transition-colors">
-                    <Key className="h-6 w-6 text-white group-hover:text-amber-500 transition-colors" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-base font-semibold text-white tracking-tight">Cambiar PIN de Acceso</p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">Renueva tu clave de seguridad (4 dígitos)</p>
-                  </div>
-                </div>
-              </motion.button>
-
-              {/* BOTÓN 6: SOPORTE CONCIERGE */}
-              <motion.button 
-                whileHover={{ scale: 0.98 }}
-                whileTap={{ scale: 0.96 }}
-                onClick={() => setShowSupportModal(true)}
-                className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300"
-              >
+              <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setShowSupportModal(true)} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
                     <MessageCircle className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
@@ -625,7 +554,7 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             {/* --- INYECCIÓN DE MODALES --- */}
 
-            {/* 🚀 MODAL: AÑADIR VENTA EN EFECTIVO */}
+            {/* MODAL: AÑADIR VENTA EN EFECTIVO */}
             <AnimatePresence>
               {showCashModal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -645,65 +574,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     <form onSubmit={handleAddCashSale} className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Monto cobrado ($)</label>
-                        <input 
-                          type="number" 
-                          required
-                          min="1"
-                          value={cashAmount} 
-                          onChange={(e) => setCashAmount(e.target.value)} 
-                          placeholder="Ej. 350" 
-                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-emerald-500 transition-colors"
-                        />
+                        <input type="number" required min="1" value={cashAmount} onChange={(e) => setCashAmount(e.target.value)} placeholder="Ej. 350" className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-emerald-500 transition-colors" />
                       </div>
-                      <button 
-                        type="submit" 
-                        disabled={isAddingCash}
-                        className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-                      >
+                      <button type="submit" disabled={isAddingCash} className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                         {isAddingCash ? "Sumando..." : "Registrar Venta de Efectivo"}
-                      </button>
-                    </form>
-                  </motion.div>
-                </div>
-              )}
-            </AnimatePresence>
-
-            {/* 🚀 MODAL: CAMBIO DE PIN DE SEGURIDAD */}
-            <AnimatePresence>
-              {showChangePinModal && (
-                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-                  <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-8 rounded-[32px] max-w-sm w-full shadow-2xl relative">
-                    <button onClick={() => setShowChangePinModal(false)} className="absolute top-6 right-6 p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors"><X className="w-5 h-5" /></button>
-                    
-                    <div className="flex items-center gap-3 mb-6">
-                      <div className="bg-amber-500/10 p-3 rounded-xl border border-amber-500/20">
-                        <Key className="w-6 h-6 text-amber-500" />
-                      </div>
-                      <div>
-                        <h3 className="text-xl font-bold text-white">Cambio de PIN</h3>
-                        <p className="text-xs text-[#A1A1AA]">Asigna una nueva clave de acceso</p>
-                      </div>
-                    </div>
-
-                    <form onSubmit={handleChangePinDashboard} className="space-y-4">
-                      <div className="space-y-2">
-                        <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Nuevo PIN (4 dígitos)</label>
-                        <input 
-                          type="text" 
-                          required
-                          maxLength={4}
-                          value={newDashboardPin} 
-                          onChange={(e) => setNewDashboardPin(e.target.value.replace(/[^0-9]/g, ''))} 
-                          placeholder="Ej. 1234" 
-                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-center tracking-[1em] font-black text-xl text-white outline-none focus:border-amber-500 transition-colors"
-                        />
-                      </div>
-                      <button 
-                        type="submit" 
-                        disabled={isChangingPin || newDashboardPin.length !== 4}
-                        className="w-full py-4 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 mt-2 shadow-[0_0_15px_rgba(245,158,11,0.3)]"
-                      >
-                        {isChangingPin ? "Actualizando..." : "Guardar Nuevo PIN"}
                       </button>
                     </form>
                   </motion.div>
@@ -724,32 +598,17 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     </p>
                     
                     <div className="bg-white p-4 rounded-2xl inline-block shadow-inner">
-                      <img 
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}`} 
-                        alt="Código QR" 
-                        className="w-48 h-48 object-contain mx-auto" 
-                      />
+                      <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}`} alt="Código QR" className="w-48 h-48 object-contain mx-auto" />
                     </div>
 
                     <div className="space-y-3">
-                      <button 
-                        onClick={() => window.open(qrConfig.type === 'reservas' ? `/reservas/${businessId}` : `/menu/${businessId}`, "_blank")}
-                        className="w-full py-3 bg-[#009EE3]/10 text-[#009EE3] border border-[#009EE3]/20 font-bold rounded-xl text-sm hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center gap-2"
-                      >
+                      <button onClick={() => window.open(qrConfig.type === 'reservas' ? `/reservas/${businessId}` : `/menu/${businessId}`, "_blank")} className="w-full py-3 bg-[#009EE3]/10 text-[#009EE3] border border-[#009EE3]/20 font-bold rounded-xl text-sm hover:bg-[#009EE3]/20 transition-colors flex items-center justify-center gap-2">
                         <ExternalLink className="w-4 h-4" /> Ver {qrConfig.type === 'reservas' ? 'Reservas' : 'Catálogo'} como Cliente
                       </button>
-                      
-                      <button 
-                        onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}&margin=20`, "_blank")}
-                        className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity"
-                      >
+                      <button onClick={() => window.open(`https://api.qrserver.com/v1/create-qr-code/?size=1000x1000&data=${encodeURIComponent(qrConfig.type === 'reservas' ? `https://miterminal.com/reservas/${businessId}` : `https://miterminal.com/menu/${businessId}`)}&margin=20`, "_blank")} className="w-full py-3 bg-[#009EE3] text-white font-bold rounded-xl text-sm hover:opacity-90 transition-opacity">
                         Descargar QR para Imprimir
                       </button>
-                      
-                      <button 
-                        onClick={() => setQrConfig({ isOpen: false, type: 'reservas' })}
-                        className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors"
-                      >
+                      <button onClick={() => setQrConfig({ isOpen: false, type: 'reservas' })} className="w-full py-2.5 bg-[#27272A] text-[#A1A1AA] hover:text-white font-medium rounded-xl text-sm transition-colors">
                         Cerrar
                       </button>
                     </div>
@@ -778,22 +637,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     <form onSubmit={handleSaveMpToken} className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-xs font-semibold text-[#A1A1AA] uppercase">Access Token (Producción)</label>
-                        <input 
-                          type="password" 
-                          required
-                          value={mpToken} 
-                          onChange={(e) => setMpToken(e.target.value)} 
-                          placeholder="APP_USR-..." 
-                          className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] font-mono transition-colors"
-                        />
+                        <input type="password" required value={mpToken} onChange={(e) => setMpToken(e.target.value)} placeholder="APP_USR-..." className="w-full bg-[#27272A]/50 border border-[#27272A] rounded-2xl p-4 text-sm text-white outline-none focus:border-[#009EE3] font-mono transition-colors" />
                         <p className="text-[10px] text-[#A1A1AA]">Este token es la llave maestra para cobrar con links y enviar pagos a tus terminales físicas.</p>
                       </div>
-
-                      <button 
-                        type="submit" 
-                        disabled={isSavingToken}
-                        className="w-full py-4 bg-[#009EE3] hover:bg-[#06B6D4] text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2 mt-2"
-                      >
+                      <button type="submit" disabled={isSavingToken} className="w-full py-4 bg-[#009EE3] hover:bg-[#06B6D4] text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2 mt-2">
                         {isSavingToken ? "Verificando y Guardando..." : tokenSavedMsg ? <><CheckCircle2 className="w-4 h-4"/> Guardado con éxito</> : "Guardar Credenciales"}
                       </button>
                     </form>
@@ -807,7 +654,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
               {showSupportModal && (
                 <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
                   <motion.div initial={{ scale: 0.9, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.9, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-0 rounded-[32px] max-w-sm w-full shadow-2xl relative flex flex-col h-[500px] max-h-[90vh] overflow-hidden">
-                    
                     <div className="flex justify-between items-center border-b border-[#27272A] p-6 pb-4 bg-[#18181B] z-10">
                       <div>
                         <h3 className="text-xl font-bold text-white flex items-center gap-2"><MessageCircle className="w-5 h-5 text-[#009EE3]" /> Soporte SaaS</h3>
@@ -824,44 +670,27 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                           </div>
                         </div>
                       ))}
-                      
                       {isSupportTyping && (
                         <div className="flex justify-start">
                           <div className="bg-[#009EE3] p-3 rounded-2xl text-white rounded-bl-none animate-pulse text-xs">Escribiendo...</div>
                         </div>
                       )}
-                      
                       {needsHuman && (
                         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-4 pb-2">
-                          <button 
-                            onClick={() => window.open(`https://wa.me/523300000000?text=Hola,%20soy%20el%20negocio%20${businessId}%20y%20necesito%20asistencia%20humana%20con%20mi%20plataforma.`, "_blank")}
-                            className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/20"
-                          >
+                          <button onClick={() => window.open(`https://wa.me/523300000000?text=Hola,%20soy%20el%20negocio%20${businessId}%20y%20necesito%20asistencia%20humana%20con%20mi%20plataforma.`, "_blank")} className="w-full py-3 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl text-sm transition-colors flex items-center justify-center gap-2 shadow-lg shadow-green-500/20">
                             <MessageCircle className="w-4 h-4" /> Hablar con Asesor Humano
                           </button>
                         </motion.div>
                       )}
-                      
                       <div ref={supportEndRef} style={{ float:"left", clear: "both" }} />
                     </div>
 
                     <form onSubmit={handleSupportSubmit} className="p-4 bg-[#18181B] border-t border-[#27272A] flex gap-2">
-                      <input 
-                        type="text" 
-                        value={supportInput} 
-                        onChange={e => setSupportInput(e.target.value)} 
-                        placeholder="Ej. Quiero actualizar el precio de mi hamburguesa" 
-                        className="flex-1 bg-[#27272A] text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-[#009EE3] transition-all" 
-                      />
-                      <button 
-                        type="submit" 
-                        disabled={isSupportTyping} 
-                        className="bg-[#009EE3] p-2.5 rounded-xl text-white hover:bg-[#06B6D4] disabled:opacity-50 flex items-center justify-center transition-colors"
-                      >
+                      <input type="text" value={supportInput} onChange={e => setSupportInput(e.target.value)} placeholder="Ej. Quiero actualizar el precio de mi hamburguesa" className="flex-1 bg-[#27272A] text-white text-sm rounded-xl px-4 py-2.5 outline-none focus:ring-1 focus:ring-[#009EE3] transition-all" />
+                      <button type="submit" disabled={isSupportTyping} className="bg-[#009EE3] p-2.5 rounded-xl text-white hover:bg-[#06B6D4] disabled:opacity-50 flex items-center justify-center transition-colors">
                         <Send className="w-4 h-4 ml-0.5" />
                       </button>
                     </form>
-
                   </motion.div>
                 </div>
               )}
