@@ -57,7 +57,11 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
   const businessId = resolvedParams.businessId;
 
   const [businessData, setBusinessData] = useState<any>(null);
+  
+  // 🚀 ESTADOS DEL CATÁLOGO TIER 1
   const [catalogServices, setCatalogServices] = useState<string[]>([]);
+  const [fullCatalog, setFullCatalog] = useState<any[]>([]); 
+  const [aiCatalogContext, setAiCatalogContext] = useState<string>(""); 
   
   const [clientName, setClientName] = useState("");
   const [phone, setPhone] = useState("");
@@ -96,8 +100,21 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
           const menuSnap = await getDoc(menuRef);
           
           let fetchedServices: string[] = [];
+          
           if (menuSnap.exists() && menuSnap.data().catalog && menuSnap.data().catalog.length > 0) {
-            fetchedServices = menuSnap.data().catalog.map((item: any) => item.name);
+            const catalogData = menuSnap.data().catalog;
+            
+            // 1. Guardamos el catálogo completo (con precios)
+            setFullCatalog(catalogData);
+          
+            // 2. Extraemos solo nombres para el Select
+            fetchedServices = catalogData.map((item: any) => item.name);
+          
+            // 3. 🚀 ARMAMOS EL CONTEXTO PREMIUM PARA LA IA
+            const detailedServices = catalogData.map((item: any) => 
+              `- ${item.name}: $${item.price} MXN. ${item.description || ''}`
+            );
+            setAiCatalogContext(detailedServices.join('\n'));
           }
           
           setCatalogServices(fetchedServices);
@@ -120,7 +137,7 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     if (businessId) fetchData();
   }, [businessId]);
 
-  // 🚀 DISPARADOR DEL MOTOR DE RESERVAS: Se ejecuta cada vez que el cliente cambia la fecha
+  // 🚀 DISPARADOR DEL MOTOR DE RESERVAS
   useEffect(() => {
     const fetchOccupiedSlots = async () => {
       if (!date || !businessData?.schedule) {
@@ -130,7 +147,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
 
       setIsLoadingSlots(true);
       try {
-        // Consulta exacta: Buscar citas de este negocio, en esta fecha específica
         const q = query(
           collection(db, "appointments"),
           where("businessId", "==", businessId),
@@ -138,15 +154,12 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
         );
         const snap = await getDocs(q);
         
-        // Mapear solo las horas ocupadas
         const occupiedTimes = snap.docs.map(doc => doc.data().time);
         
-        // Pasar por nuestro Motor Matrix
         const slots = generateAvailableTimeSlots(date, businessData.schedule, occupiedTimes);
         
         setAvailableSlots(slots);
         
-        // Si la hora que había seleccionado ya no está disponible, la limpiamos
         if (!slots.includes(time)) setTime("");
         
       } catch (error) {
@@ -171,11 +184,16 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     
     setIsSubmitting(true);
     try {
+      // 🚀 BUSCAMOS EL PRECIO DEL SERVICIO SELECCIONADO
+      const selectedItem = fullCatalog.find(item => item.name === finalService);
+      const servicePrice = selectedItem ? Number(selectedItem.price) : 0;
+
       await addDoc(collection(db, "appointments"), {
         businessId, 
         clientName, 
         phone, 
         serviceName: finalService, 
+        price: servicePrice, // 👈 INYECCIÓN DEL PRECIO
         date, 
         time, 
         status: "pending", 
@@ -183,7 +201,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
       });
       setSuccess(true);
       
-      // Limpiar datos sensibles para la siguiente reserva
       setClientName("");
       setPhone("");
       setDate("");
@@ -204,8 +221,9 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
     setChatInput("");
     setIsTyping(true);
 
-    const catalogContext = catalogServices.length > 0 
-      ? `\n\nIMPORTANTE - Este es nuestro catálogo/menú actual: ${catalogServices.join(', ')}. Solo ofrece estos servicios o productos.` 
+    // 🚀 INYECCIÓN ESTRICTA DEL CATÁLOGO PARA LA IA
+    const catalogContext = aiCatalogContext 
+      ? `\n\nIMPORTANTE - Nuestro catálogo oficial y PRECIOS actuales son:\n${aiCatalogContext}\n\nREGLA ESTRICTA: Siempre informa el precio exacto del servicio si el cliente pregunta o si estás recomendando algo. No digas que no manejas precios.` 
       : "";
     const fullPrompt = (businessData?.aiPromptContext || "Eres un asistente virtual amable.") + catalogContext;
 
@@ -366,7 +384,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
               <input 
                 type="date" 
                 required 
-                // Evitamos fechas en el pasado en el HTML nativo
                 min={new Date().toISOString().split('T')[0]} 
                 value={date} 
                 onChange={(e) => setDate(e.target.value)} 
@@ -374,7 +391,6 @@ export default function PublicBookingPage({ params }: { params: Promise<{ busine
               />
             </div>
             
-            {/* 🚀 EL NUEVO SELECTOR INTELIGENTE DE HORAS */}
             <div className="space-y-2">
               <label className="text-[10px] font-bold text-[#A1A1AA] uppercase tracking-wider">Hora</label>
               <div className="relative">

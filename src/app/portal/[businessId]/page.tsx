@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, use } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink } from "lucide-react";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
 import { useRouter } from "next/navigation";
@@ -22,6 +22,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [dbBusinessName, setDbBusinessName] = useState("");
   const [requiresPinChange, setRequiresPinChange] = useState(false);
   const [newPinConfig, setNewPinConfig] = useState({ step: 1, firstPin: "" });
+
+  // 🚀 ESTADOS DE VENTAS REALES
+  const [todaySales, setTodaySales] = useState<number>(0);
+  const [loadingSales, setLoadingSales] = useState(true);
 
   // Estados para los Modales de Acción
   const [qrConfig, setQrConfig] = useState<{isOpen: boolean, type: 'reservas' | 'menu'}>({ isOpen: false, type: 'reservas' });
@@ -56,9 +60,10 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
     return () => clearTimeout(timer);
   }, []);
 
-  // Cargar Token de Mercado Pago al desbloquear
+  // Cargar Token de Mercado Pago y Ventas del Día al desbloquear
   useEffect(() => {
-    if (isUnlocked) {
+    if (isUnlocked && businessId) {
+      // 1. Cargar Token MP
       const fetchBusinessData = async () => {
         try {
           const bizDoc = await getDoc(doc(db, "businesses", businessId));
@@ -69,7 +74,34 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
           console.error("Error obteniendo datos del negocio:", error);
         }
       };
+      
+      // 2. 🚀 MOTOR DE CÁLCULO DE VENTAS DIARIAS
+      const fetchTodayRevenue = async () => {
+        try {
+          const todayStr = new Date().toLocaleDateString('en-CA'); 
+          const q = query(
+            collection(db, "appointments"),
+            where("businessId", "==", businessId),
+            where("date", "==", todayStr)
+          );
+
+          const snap = await getDocs(q);
+          let total = 0;
+          snap.forEach(docSnap => {
+            const data = docSnap.data();
+            total += Number(data.price || 0);
+          });
+
+          setTodaySales(total);
+        } catch (error) {
+          console.error("Error calculando ventas de hoy:", error);
+        } finally {
+          setLoadingSales(false);
+        }
+      };
+
       fetchBusinessData();
+      fetchTodayRevenue();
     }
   }, [isUnlocked, businessId]);
 
@@ -384,11 +416,18 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
               <div className="absolute -top-20 -right-20 w-48 h-48 bg-[#009EE3] rounded-full mix-blend-screen filter blur-[80px] opacity-30"></div>
               
               <p className="text-xs font-semibold text-[#A1A1AA] mb-2 uppercase tracking-widest">Ventas de hoy</p>
+              
+              {/* 🚀 PROYECCIÓN DINÁMICA DE VENTAS */}
               <h2 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-white to-[#A1A1AA]">
-                $4,250.00
+                {loadingSales ? (
+                  <span className="animate-pulse opacity-50 text-4xl">$0.00</span>
+                ) : (
+                  <span>${todaySales.toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                )}
               </h2>
+              
               <div className="mt-5 inline-flex items-center gap-2 bg-[#009EE3]/10 px-3 py-1.5 rounded-full border border-[#009EE3]/20">
-                <span className="text-xs font-semibold text-[#06B6D4]">+12% vs ayer</span>
+                <span className="text-xs font-semibold text-[#06B6D4]">Sistema Sincronizado</span>
               </div>
             </motion.div>
 
