@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Asegúrate de que esta ruta apunte a tu config de Firebase
 import OpenAI from 'openai';
 
@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       return new NextResponse("Not Found", { status: 404 });
     }
 
-    // Iteramos sobre las entradas
+    // Iteramos sobre las entradas (Meta a veces agrupa varios mensajes en un solo envío)
     for (const entry of body.entry) {
       for (const change of entry.changes) {
         const value = change.value;
@@ -47,10 +47,10 @@ export async function POST(request: Request) {
           const message = value.messages[0];
           
           // Datos cruciales extraídos del Payload
-          const clientPhone = message.from; 
-          const businessPhoneId = value.metadata.phone_number_id; 
+          const clientPhone = message.from; // Número del cliente que escribe
+          const businessPhoneId = value.metadata.phone_number_id; // ID del número del negocio
           
-          // Solo procesamos mensajes de texto
+          // Solo procesamos mensajes de texto por ahora (luego agregaremos audios/imágenes)
           if (message.type === "text") {
             const incomingText = message.text.body;
             console.log(`📩 Mensaje recibido de ${clientPhone} a la terminal ${businessPhoneId}: ${incomingText}`);
@@ -65,27 +65,24 @@ export async function POST(request: Request) {
             
             if (querySnapshot.empty) {
               console.log(`⚠️ No se encontró ningún negocio con el ID de WhatsApp: ${businessPhoneId}`);
-              continue;
+              continue; // Ignoramos y pasamos al siguiente
             }
 
             const businessDoc = querySnapshot.docs[0];
             const businessData = businessDoc.data();
-            const businessId = businessDoc.id; // Clave para buscar el menú
+            const businessId = businessDoc.id; // ID del documento (ej. "gps-inteligente")
             
             console.log(`✅ Negocio identificado: ${businessData.businessName || 'Sin Nombre'}`);
 
-            // PASO B.1: Extraer el catálogo (menús) de Firebase estructurado
-            const menusQuery = query(
-              collection(db, "menus"),
-              where("businessId", "==", businessId)
-            );
-            const menusSnapshot = await getDocs(menusQuery);
-
+            // PASO B.1: Extraer el catálogo (menús) de Firebase mediante Acceso Directo (O(1))
             let catalogoString = "Catálogo de productos/servicios disponibles:\n";
 
-            if (!menusSnapshot.empty) {
-              menusSnapshot.forEach((doc) => {
-                const menuData = doc.data();
+            try {
+              const menuDocRef = doc(db, "menus", businessId);
+              const menuDocSnap = await getDoc(menuDocRef);
+
+              if (menuDocSnap.exists()) {
+                const menuData = menuDocSnap.data();
                 
                 // Mapeo exacto basado en la estructura de tu JSON (catalog -> items)
                 if (menuData.catalog && Array.isArray(menuData.catalog)) {
@@ -100,15 +97,22 @@ export async function POST(request: Request) {
                     }
                   });
                 }
-              });
-            } else {
-              catalogoString += "No hay productos listados por el momento.\n";
+              } else {
+                catalogoString += "No hay productos listados por el momento.\n";
+              }
+            } catch (menuError) {
+              console.error("❌ Error al recuperar el menú de Firebase:", menuError);
+              catalogoString += "Error al cargar el catálogo de productos.\n";
             }
 
-            // PASO B.2: Construcción del Super Prompt (Cerebro + Inventario)
-            const contextoBase = businessData.aiPromptContext || `Eres el asistente virtual de ventas para el negocio '${businessData.businessName}'. Tu objetivo es ser amable, conciso y cerrar la venta persuasivamente.`;
+            // Auditoría en consola para verificar que el catálogo se leyó correctamente
+            console.log("📦 Catálogo inyectado a la IA:\n", catalogoString);
 
-            const promptFinal = `
+            // PASO B.2: Inyección del Cerebro OpenAI con Contexto y Catálogo
+            try {
+              const contextoBase = businessData.aiPromptContext || `Eres el asistente virtual de ventas para el negocio '${businessData.businessName}'. Tu objetivo es ser amable, conciso y ayudar al cliente a resolver dudas. Responde en un máximo de 3 oraciones cortas.`;
+
+              const promptFinal = `
 ${contextoBase}
 
 ${catalogoString}
@@ -122,10 +126,8 @@ REGLAS ESTRICTAS DE VENTAS:
 6. Responde de forma natural y concisa (máximo 2 a 3 párrafos cortos).
 `;
 
-            try {
-              // Llamada a OpenAI inyectando el prompt maestro
               const aiResponse = await openai.chat.completions.create({
-                model: "gpt-3.5-turbo", // gpt-4o-mini recomendado para SaaS en producción
+                model: "gpt-3.5-turbo", // Puedes usar gpt-4o-mini para producción
                 messages: [
                   {
                     role: "system",
@@ -141,6 +143,7 @@ REGLAS ESTRICTAS DE VENTAS:
 
               const aiResponseText = aiResponse.choices[0].message.content;
               
+              // Imprimimos el resultado en Vercel para probar la IA sin depender de Meta
               console.log("🧠 Respuesta de la IA con catálogo generada con éxito:\n", aiResponseText);
 
               // PASO C: Enviar la respuesta de vuelta por WhatsApp
@@ -155,6 +158,7 @@ REGLAS ESTRICTAS DE VENTAS:
       }
     }
 
+    // Siempre debemos responder 200 OK rápidamente a Meta para que no nos reintente enviar el mismo mensaje
     return new NextResponse("EVENT_RECEIVED", { status: 200 });
 
   } catch (error) {
@@ -163,7 +167,7 @@ REGLAS ESTRICTAS DE VENTAS:
   }
 }
 
-// Función auxiliar para enviar el mensaje a Meta
+// Función auxiliar para enviar el mensaje de vuelta usando la API Cloud de Meta
 async function sendWhatsAppMessage(phoneNumberId: string, to: string, text: string) {
   const accessToken = process.env.META_ACCESS_TOKEN;
   
@@ -184,11 +188,11 @@ async function sendWhatsAppMessage(phoneNumberId: string, to: string, text: stri
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to: to,
+        to: to, // Número del cliente
         type: "text",
         text: {
           preview_url: false,
-          body: text
+          body: text // La respuesta de tu IA
         }
       }),
     });
