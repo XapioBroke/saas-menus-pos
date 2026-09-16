@@ -1,6 +1,12 @@
 import { NextResponse } from 'next/server';
 import { collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Asegúrate de que esta ruta apunte a tu config de Firebase
+import OpenAI from 'openai';
+
+// Inicializamos el cerebro de OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+});
 
 // 1. MÉTODO GET: Verificación de Facebook (Solo se usa una vez al configurar Meta)
 export async function GET(request: Request) {
@@ -64,22 +70,41 @@ export async function POST(request: Request) {
 
             const businessDoc = querySnapshot.docs[0];
             const businessData = businessDoc.data();
-            const businessId = businessDoc.id;
-
-            console.log(`✅ Negocio identificado: ${businessData.businessName}`);
-
-            // PASO B: Aquí entrará la Inteligencia Artificial (OpenAI o Gemini)
-            // Extraemos el prompt y el catálogo para dárselo a la IA
-            const aiContext = businessData.aiPromptContext;
             
-            // TODO: (Siguiente fase) Llamada a la API de OpenAI/Gemini pasándole el contexto y el mensaje
-            // const aiResponse = await callAI(incomingText, aiContext, catalog);
-            
-            // Simulación temporal de la respuesta de la IA
-            const aiResponseText = `Hola! Soy el asistente virtual de ${businessData.businessName}. He recibido tu mensaje: "${incomingText}". Pronto podré tomarte el pedido de manera automática.`;
+            console.log(`✅ Negocio identificado: ${businessData.businessName || 'Sin Nombre'}`);
 
-            // PASO C: Enviar la respuesta de vuelta por WhatsApp
-            await sendWhatsAppMessage(businessPhoneId, clientPhone, aiResponseText);
+            // PASO B: Inyección del Cerebro OpenAI
+            try {
+              // Aquí puedes extraer el aiPromptContext si lo tienes en Firebase, por ahora usamos uno base
+              const context = businessData.aiPromptContext || `Eres el asistente virtual de ventas para el negocio '${businessData.businessName}'. Tu objetivo es ser amable, conciso y ayudar al cliente a resolver dudas. Responde en un máximo de 3 oraciones cortas.`;
+
+              const aiResponse = await openai.chat.completions.create({
+                model: "gpt-3.5-turbo", // Puedes usar gpt-4o-mini para producción
+                messages: [
+                  {
+                    role: "system",
+                    content: context
+                  },
+                  {
+                    role: "user",
+                    content: incomingText
+                  }
+                ],
+                temperature: 0.7,
+              });
+
+              const aiResponseText = aiResponse.choices[0].message.content;
+              
+              // Imprimimos el resultado en Vercel para probar la IA sin depender de Meta
+              console.log("🧠 Respuesta de la IA generada con éxito:", aiResponseText);
+
+              // PASO C: Enviar la respuesta de vuelta por WhatsApp
+              // ⚠️ MANTENEMOS COMENTADO hasta que Meta quite la restricción de "Pending review"
+              // await sendWhatsAppMessage(businessPhoneId, clientPhone, aiResponseText || "");
+
+            } catch (aiError) {
+              console.error("❌ Error en el cerebro de OpenAI:", aiError);
+            }
           }
         }
       }
