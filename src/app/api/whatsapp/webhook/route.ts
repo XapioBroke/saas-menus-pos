@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { collection, query, where, getDocs, doc, getDoc } from "firebase/firestore";
+// ⚠️ ATENCIÓN: Se agregaron addDoc y serverTimestamp a la importación
+import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase"; // Asegúrate de que esta ruta apunte a tu config de Firebase
 import OpenAI from 'openai';
 
@@ -145,6 +146,20 @@ REGLAS ESTRICTAS DE VENTAS:
               
               // Imprimimos el resultado en Vercel para probar la IA sin depender de Meta
               console.log("🧠 Respuesta de la IA con catálogo generada con éxito:\n", aiResponseText);
+
+              // PASO B.3: Guardar el registro de la conversación en Firebase (Sin bloquear el flujo)
+              try {
+                await addDoc(collection(db, "businesses", businessId, "chats"), {
+                  clienteCelular: clientPhone,
+                  mensajeCliente: incomingText,
+                  respuestaIA: aiResponseText,
+                  fecha: serverTimestamp(),
+                  leidoPorHumano: false
+                });
+                console.log("💾 Historial guardado en Firebase exitosamente.");
+              } catch (dbError) {
+                console.error("❌ Error guardando el historial en Firebase:", dbError);
+              }
 
               // PASO C: Enviar la respuesta de vuelta por WhatsApp
               // ⚠️ MANTENEMOS COMENTADO hasta que Meta quite la restricción de "Pending review"
