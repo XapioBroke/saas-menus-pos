@@ -2,11 +2,30 @@
 
 import { useState, useEffect, useRef, use, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink, PlusCircle, Key, DollarSign } from "lucide-react";
+import { Wallet, QrCode, Calendar, MessageCircle, Lock, Delete, ShieldCheck, X, Send, CreditCard, CheckCircle2, Store, ExternalLink, PlusCircle, Key, DollarSign, Clock, CalendarDays, Trash2 } from "lucide-react";
 import { doc, getDoc, updateDoc, collection, query, where, getDocs, addDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import Link from "next/link"; 
 import { useRouter } from "next/navigation";
+
+// Tipos para el horario
+type DailySchedule = { isOpen: boolean; open: string; close: string };
+type WeeklySchedule = { [key: string]: DailySchedule };
+
+const defaultSchedule: WeeklySchedule = {
+  monday: { isOpen: true, open: "09:00", close: "18:00" },
+  tuesday: { isOpen: true, open: "09:00", close: "18:00" },
+  wednesday: { isOpen: true, open: "09:00", close: "18:00" },
+  thursday: { isOpen: true, open: "09:00", close: "18:00" },
+  friday: { isOpen: true, open: "09:00", close: "18:00" },
+  saturday: { isOpen: false, open: "09:00", close: "14:00" },
+  sunday: { isOpen: false, open: "09:00", close: "14:00" }
+};
+
+const dayNames: { [key: string]: string } = {
+  monday: "Lunes", tuesday: "Martes", wednesday: "Miércoles", 
+  thursday: "Jueves", friday: "Viernes", saturday: "Sábado", sunday: "Domingo"
+};
 
 export default function ConciergePortal({ params }: { params: Promise<{ businessId: string }> }) {
   const resolvedParams = use(params);
@@ -35,6 +54,14 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
   const [showSupportModal, setShowSupportModal] = useState(false);
   const [showPaymentConfigModal, setShowPaymentConfigModal] = useState(false);
   
+  // 🚀 ESTADOS NUEVOS: HORARIOS Y DÍAS FESTIVOS
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [schedule, setSchedule] = useState<WeeklySchedule>(defaultSchedule);
+  const [blockedDates, setBlockedDates] = useState<string[]>([]);
+  const [newBlockedDate, setNewBlockedDate] = useState("");
+  const [isSavingSchedule, setIsSavingSchedule] = useState(false);
+  const [scheduleSavedMsg, setScheduleSavedMsg] = useState(false);
+
   // Modal de Efectivo
   const [showCashModal, setShowCashModal] = useState(false);
   const [cashAmount, setCashAmount] = useState("");
@@ -108,8 +135,17 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
       const fetchBusinessData = async () => {
         try {
           const bizDoc = await getDoc(doc(db, "businesses", businessId));
-          if (bizDoc.exists() && bizDoc.data().mercadopagoAccessToken) {
-            setMpToken(bizDoc.data().mercadopagoAccessToken);
+          if (bizDoc.exists()) {
+            const data = bizDoc.data();
+            if (data.mercadopagoAccessToken) {
+              setMpToken(data.mercadopagoAccessToken);
+            }
+            if (data.schedule) {
+              setSchedule(data.schedule);
+            }
+            if (data.blockedDates) {
+              setBlockedDates(data.blockedDates);
+            }
           }
         } catch (error) {
           console.error("Error obteniendo datos:", error);
@@ -125,6 +161,37 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
       supportEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [supportMessages, isSupportTyping, showSupportModal]);
+
+  // 🚀 LÓGICA DE GUARDADO DE HORARIOS EN FIREBASE
+  const handleSaveSchedule = async () => {
+    setIsSavingSchedule(true);
+    try {
+      await updateDoc(doc(db, "businesses", businessId), { 
+        schedule: schedule,
+        blockedDates: blockedDates
+      });
+      setScheduleSavedMsg(true);
+      setTimeout(() => { 
+        setScheduleSavedMsg(false); 
+        setShowScheduleModal(false); 
+      }, 2000);
+    } catch (error) {
+      alert("Error al guardar el horario.");
+    } finally {
+      setIsSavingSchedule(false);
+    }
+  };
+
+  const handleAddBlockedDate = () => {
+    if (newBlockedDate && !blockedDates.includes(newBlockedDate)) {
+      setBlockedDates([...blockedDates, newBlockedDate]);
+      setNewBlockedDate("");
+    }
+  };
+
+  const removeBlockedDate = (dateToRemove: string) => {
+    setBlockedDates(blockedDates.filter(d => d !== dateToRemove));
+  };
 
   // 🚀 LÓGICA DE TECLADO INTELIGENTE (LOGIN + CAMBIO DE PIN)
   const handleKeypad = async (num: string) => {
@@ -491,6 +558,31 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
 
             <div className="grid grid-cols-1 gap-4">
               
+              <Link href={`/portal/${businessId}/citas`} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block">
+                <div className="flex items-center gap-4">
+                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
+                    <Calendar className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white tracking-tight">Ver Citas de Hoy</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Gestionar agenda y reservas</p>
+                  </div>
+                </div>
+              </Link>
+
+              {/* 🚀 NUEVO BOTÓN: CONFIGURAR HORARIOS */}
+              <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setShowScheduleModal(true)} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
+                <div className="flex items-center gap-4">
+                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
+                    <Clock className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
+                  </div>
+                  <div className="text-left">
+                    <p className="text-base font-semibold text-white tracking-tight">Configurar Horarios</p>
+                    <p className="text-xs text-[#A1A1AA] mt-0.5">Días operativos y bloqueos</p>
+                  </div>
+                </div>
+              </motion.button>
+
               <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setQrConfig({ isOpen: true, type: 'reservas' })} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
                   <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
@@ -514,18 +606,6 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                   </div>
                 </div>
               </motion.button>
-
-              <Link href={`/portal/${businessId}/citas`} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300 block">
-                <div className="flex items-center gap-4">
-                  <div className="bg-[#27272A] p-3.5 rounded-2xl group-hover:bg-[#009EE3]/20 transition-colors">
-                    <Calendar className="h-6 w-6 text-white group-hover:text-[#009EE3] transition-colors" />
-                  </div>
-                  <div className="text-left">
-                    <p className="text-base font-semibold text-white tracking-tight">Ver Citas de Hoy</p>
-                    <p className="text-xs text-[#A1A1AA] mt-0.5">Gestionar agenda y reservas</p>
-                  </div>
-                </div>
-              </Link>
 
               <motion.button whileHover={{ scale: 0.98 }} whileTap={{ scale: 0.96 }} onClick={() => setShowPaymentConfigModal(true)} className="group flex items-center justify-between w-full bg-[#18181B] border border-[#27272A] rounded-3xl p-5 hover:border-[#009EE3]/50 transition-all duration-300">
                 <div className="flex items-center gap-4">
@@ -580,6 +660,98 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                         {isAddingCash ? "Sumando..." : "Registrar Venta de Efectivo"}
                       </button>
                     </form>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
+
+            {/* 🚀 NUEVO MODAL: GESTOR DE HORARIOS Y FECHAS BLOQUEADAS */}
+            <AnimatePresence>
+              {showScheduleModal && (
+                <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-start sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+                  <motion.div initial={{ y: 50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: 50, opacity: 0 }} className="bg-[#18181B] border border-[#27272A] p-6 sm:p-8 rounded-t-[32px] sm:rounded-[32px] max-w-lg w-full shadow-2xl relative min-h-[80vh] sm:min-h-0 sm:max-h-[90vh] overflow-y-auto mt-10 sm:mt-0">
+                    <button onClick={() => setShowScheduleModal(false)} className="absolute top-6 right-6 p-2 bg-[#27272A] rounded-full text-[#A1A1AA] hover:text-white transition-colors z-10"><X className="w-5 h-5" /></button>
+                    
+                    <div className="flex items-center gap-3 mb-6">
+                      <div className="bg-[#009EE3]/10 p-3 rounded-xl border border-[#009EE3]/20">
+                        <CalendarDays className="w-6 h-6 text-[#009EE3]" />
+                      </div>
+                      <div>
+                        <h3 className="text-xl font-bold text-white">Horarios de Operación</h3>
+                        <p className="text-xs text-[#A1A1AA]">La Inteligencia Artificial respetará esto al agendar.</p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-6">
+                      {/* SECCIÓN 1: DÍAS DE LA SEMANA */}
+                      <div>
+                        <h4 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Horario Semanal</h4>
+                        <div className="space-y-2 border border-[#27272A] bg-[#27272A]/20 rounded-2xl p-4">
+                          {Object.keys(schedule).map((dayKey) => {
+                            const dayConfig = schedule[dayKey];
+                            return (
+                              <div key={dayKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-2 border-b border-[#27272A]/50 last:border-0">
+                                <div className="flex items-center gap-3 w-32">
+                                  {/* Toggle Switch */}
+                                  <button 
+                                    onClick={() => setSchedule({...schedule, [dayKey]: {...dayConfig, isOpen: !dayConfig.isOpen}})}
+                                    className={`w-10 h-6 rounded-full relative transition-colors ${dayConfig.isOpen ? 'bg-[#009EE3]' : 'bg-[#3f3f46]'}`}
+                                  >
+                                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${dayConfig.isOpen ? 'left-5' : 'left-1'}`} />
+                                  </button>
+                                  <span className={`text-sm font-medium ${dayConfig.isOpen ? 'text-white' : 'text-[#A1A1AA] line-through'}`}>{dayNames[dayKey]}</span>
+                                </div>
+                                
+                                {dayConfig.isOpen ? (
+                                  <div className="flex items-center gap-2">
+                                    <input type="time" value={dayConfig.open} onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, open: e.target.value}})} className="bg-[#18181B] border border-[#27272A] rounded-lg px-2 py-1 text-sm text-white focus:border-[#009EE3] outline-none" />
+                                    <span className="text-[#A1A1AA] text-xs">a</span>
+                                    <input type="time" value={dayConfig.close} onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, close: e.target.value}})} className="bg-[#18181B] border border-[#27272A] rounded-lg px-2 py-1 text-sm text-white focus:border-[#009EE3] outline-none" />
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-[#A1A1AA] italic sm:w-auto w-full text-left sm:text-right">Cerrado</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* SECCIÓN 2: FECHAS BLOQUEADAS (EXCEPCIONES) */}
+                      <div>
+                        <h4 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Días Festivos / Vacaciones</h4>
+                        <p className="text-xs text-[#A1A1AA] mb-3">Agrega fechas específicas donde el negocio estará cerrado para evitar reservas.</p>
+                        
+                        <div className="flex gap-2 mb-4">
+                          <input 
+                            type="date" 
+                            value={newBlockedDate} 
+                            onChange={(e) => setNewBlockedDate(e.target.value)} 
+                            className="flex-1 bg-[#27272A]/50 border border-[#27272A] rounded-xl px-4 py-2.5 text-sm text-white outline-none focus:border-[#009EE3]" 
+                          />
+                          <button onClick={handleAddBlockedDate} className="bg-[#27272A] hover:bg-[#3f3f46] text-white px-4 py-2.5 rounded-xl text-sm font-semibold transition-colors">Añadir</button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                          {blockedDates.length === 0 ? (
+                            <span className="text-xs text-[#A1A1AA] italic">Ninguna fecha bloqueada.</span>
+                          ) : (
+                            blockedDates.map((date) => (
+                              <div key={date} className="flex items-center gap-2 bg-red-500/10 border border-red-500/20 text-red-400 px-3 py-1.5 rounded-full text-xs font-semibold">
+                                {date}
+                                <button onClick={() => removeBlockedDate(date)} className="hover:text-white transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+
+                      {/* BOTÓN DE GUARDAR HORARIOS */}
+                      <button onClick={handleSaveSchedule} disabled={isSavingSchedule} className="w-full py-4 bg-[#009EE3] hover:bg-[#06B6D4] text-white font-bold rounded-2xl text-sm transition-colors disabled:opacity-50 flex justify-center items-center gap-2 mt-4">
+                        {isSavingSchedule ? "Guardando en la nube..." : scheduleSavedMsg ? <><CheckCircle2 className="w-5 h-5"/> ¡Horario Actualizado!</> : "Guardar Cambios de Horario"}
+                      </button>
+                    </div>
+
                   </motion.div>
                 </div>
               )}
