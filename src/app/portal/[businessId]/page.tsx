@@ -683,48 +683,59 @@ export default function ConciergePortal({ params }: { params: Promise<{ business
                     </div>
 
                     <div className="space-y-6">
-                      {/* SECCIÓN 1: DÍAS DE LA SEMANA */}
+                     {/* SECCIÓN 1: DÍAS DE LA SEMANA */}
 <div>
   <h4 className="text-sm font-bold text-white mb-3 uppercase tracking-wider">Horario Semanal</h4>
-  <div className="space-y-3 border border-[#27272A] bg-[#27272A]/20 rounded-2xl p-4">
-    {Object.keys(schedule).map((dayKey) => {
-      const dayConfig = schedule[dayKey];
+  <div className="space-y-1 border border-[#27272A] bg-[#27272A]/20 rounded-2xl p-2 sm:p-4">
+    
+    {/* Forzamos el renderizado exacto de los 7 días, sin importar qué traiga Firebase */}
+    {["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"].map((dayKey) => {
+      // Extraemos el valor del estado, o usamos el default si Firebase no lo tenía
+      const dayConfig = schedule[dayKey] || defaultSchedule[dayKey];
+      
       return (
-        <div key={dayKey} className="flex items-center justify-between gap-2 p-2.5 border-b border-[#27272A]/50 last:border-0">
+        <div key={dayKey} className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-3 border-b border-[#27272A]/50 last:border-0 hover:bg-[#18181B] transition-colors rounded-xl">
           
-          {/* BLOQUE IZQUIERDO: Switch + Nombre del Día (Ancho fijo para que no se oculte) */}
-          <div className="flex items-center gap-3 w-36 sm:w-40 shrink-0">
-            <button 
-              onClick={() => setSchedule({...schedule, [dayKey]: {...dayConfig, isOpen: !dayConfig.isOpen}})}
-              className={`w-10 h-6 rounded-full relative transition-colors shrink-0 ${dayConfig.isOpen ? 'bg-[#009EE3]' : 'bg-[#3f3f46]'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${dayConfig.isOpen ? 'left-5' : 'left-1'}`} />
-            </button>
-            <span className={`text-sm font-semibold truncate ${dayConfig.isOpen ? 'text-white' : 'text-[#A1A1AA] line-through'}`}>
+          <div className="flex items-center justify-between sm:justify-start gap-4 sm:w-48 shrink-0">
+            {/* Nombre del Día (Ancho fijo) */}
+            <span className={`w-24 text-sm font-bold uppercase tracking-wide ${dayConfig.isOpen ? 'text-white' : 'text-[#A1A1AA]'}`}>
               {dayNames[dayKey]}
             </span>
+
+            {/* Toggle Switch */}
+            <button 
+              onClick={() => setSchedule({...schedule, [dayKey]: {...dayConfig, isOpen: !dayConfig.isOpen}})}
+              className={`w-12 h-6 rounded-full relative transition-colors shrink-0 shadow-inner ${dayConfig.isOpen ? 'bg-[#009EE3]' : 'bg-[#3f3f46]'}`}
+            >
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-md ${dayConfig.isOpen ? 'left-7' : 'left-1'}`} />
+            </button>
           </div>
           
-          {/* BLOQUE DERECHO: Horas de Apertura y Cierre */}
-          {dayConfig.isOpen ? (
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <input 
-                type="time" 
-                value={dayConfig.open} 
-                onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, open: e.target.value}})} 
-                className="bg-[#18181B] border border-[#27272A] rounded-xl px-2 py-1.5 text-xs sm:text-sm text-white focus:border-[#009EE3] outline-none" 
-              />
-              <span className="text-[#A1A1AA] text-xs">a</span>
-              <input 
-                type="time" 
-                value={dayConfig.close} 
-                onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, close: e.target.value}})} 
-                className="bg-[#18181B] border border-[#27272A] rounded-xl px-2 py-1.5 text-xs sm:text-sm text-white focus:border-[#009EE3] outline-none" 
-              />
-            </div>
-          ) : (
-            <div className="text-xs text-[#A1A1AA] italic pr-4">Cerrado</div>
-          )}
+          {/* Inputs de Horario o Etiqueta de Cierre */}
+          <div className="flex-1 flex justify-end">
+            {dayConfig.isOpen ? (
+              <div className="flex items-center gap-2">
+                <input 
+                  type="time" 
+                  value={dayConfig.open || "09:00"} 
+                  onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, open: e.target.value}})} 
+                  className="bg-[#18181B] border border-[#27272A] rounded-xl px-3 py-2 text-sm text-white focus:border-[#009EE3] outline-none text-center w-28 shadow-sm transition-colors" 
+                />
+                <span className="text-[#A1A1AA] text-xs font-bold">a</span>
+                <input 
+                  type="time" 
+                  value={dayConfig.close || "18:00"} 
+                  onChange={(e) => setSchedule({...schedule, [dayKey]: {...dayConfig, close: e.target.value}})} 
+                  className="bg-[#18181B] border border-[#27272A] rounded-xl px-3 py-2 text-sm text-white focus:border-[#009EE3] outline-none text-center w-28 shadow-sm transition-colors" 
+                />
+              </div>
+            ) : (
+              <div className="text-sm text-[#A1A1AA] italic font-medium w-full text-right sm:text-right py-2">
+                Día de descanso
+              </div>
+            )}
+          </div>
+
         </div>
       );
     })}
