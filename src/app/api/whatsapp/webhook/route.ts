@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
-// ⚠️ ATENCIÓN: Se agregaron addDoc y serverTimestamp a la importación
 import { collection, query, where, getDocs, doc, getDoc, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase"; // Asegúrate de que esta ruta apunte a tu config de Firebase
+import { db } from "@/lib/firebase"; 
 import OpenAI from 'openai';
 
 // Inicializamos el cerebro de OpenAI
@@ -9,10 +8,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-// 1. MÉTODO GET: Verificación de Facebook (Solo se usa una vez al configurar Meta)
+// 1. MÉTODO GET: Verificación de Facebook (Solo se usa una vez)
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  
   const mode = searchParams.get("hub.mode");
   const token = searchParams.get("hub.verify_token");
   const challenge = searchParams.get("hub.challenge");
@@ -23,131 +21,128 @@ export async function GET(request: Request) {
     console.log("✅ Webhook verificado por Meta");
     return new NextResponse(challenge, { status: 200 });
   } else {
-    console.error("❌ Falló la verificación del Webhook");
     return new NextResponse("Forbidden", { status: 403 });
   }
 }
 
-// 2. MÉTODO POST: El motor que recibe todos los mensajes de WhatsApp de todos tus clientes
+// 2. MÉTODO POST: Motor principal de procesamiento de WhatsApp
 export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    // Verificamos que sea un evento de WhatsApp
     if (body.object !== "whatsapp_business_account") {
       return new NextResponse("Not Found", { status: 404 });
     }
 
-    // Iteramos sobre las entradas (Meta a veces agrupa varios mensajes en un solo envío)
     for (const entry of body.entry) {
       for (const change of entry.changes) {
         const value = change.value;
 
-        // Validamos que haya un mensaje nuevo
         if (value.messages && value.messages.length > 0) {
           const message = value.messages[0];
+          const clientPhone = message.from; 
+          const businessPhoneId = value.metadata.phone_number_id; 
           
-          // Datos cruciales extraídos del Payload
-          const clientPhone = message.from; // Número del cliente que escribe
-          const businessPhoneId = value.metadata.phone_number_id; // ID del número del negocio
-          
-          // Solo procesamos mensajes de texto por ahora (luego agregaremos audios/imágenes)
           if (message.type === "text") {
             const incomingText = message.text.body;
-            console.log(`📩 Mensaje recibido de ${clientPhone} a la terminal ${businessPhoneId}: ${incomingText}`);
+            console.log(`📩 Mensaje de ${clientPhone}: ${incomingText}`);
 
-            // PASO A: Buscar de quién es este número en Firebase
-            const q = query(
-              collection(db, "businesses"), 
-              where("whatsappPhoneNumberId", "==", businessPhoneId)
-            );
-            
+            // PASO A: Buscar el negocio
+            const q = query(collection(db, "businesses"), where("whatsappPhoneNumberId", "==", businessPhoneId));
             const querySnapshot = await getDocs(q);
             
             if (querySnapshot.empty) {
-              console.log(`⚠️ No se encontró ningún negocio con el ID de WhatsApp: ${businessPhoneId}`);
-              continue; // Ignoramos y pasamos al siguiente
+              console.log(`⚠️ Negocio no encontrado para ID: ${businessPhoneId}`);
+              continue;
             }
 
             const businessDoc = querySnapshot.docs[0];
             const businessData = businessDoc.data();
-            const businessId = businessDoc.id; // ID del documento (ej. "gps-inteligente")
+            const businessId = businessDoc.id; 
             
-            console.log(`✅ Negocio identificado: ${businessData.businessName || 'Sin Nombre'}`);
-
-            // PASO B.1: Extraer el catálogo (menús) de Firebase mediante Acceso Directo (O(1))
+            // PASO B.1: Extraer Catálogo (O(1))
             let catalogoString = "Catálogo de productos/servicios disponibles:\n";
-
             try {
               const menuDocRef = doc(db, "menus", businessId);
               const menuDocSnap = await getDoc(menuDocRef);
 
-              if (menuDocSnap.exists()) {
-                const menuData = menuDocSnap.data();
-                
-                // Mapeo exacto basado en la estructura de tu JSON (catalog -> items)
-                if (menuData.catalog && Array.isArray(menuData.catalog)) {
-                  menuData.catalog.forEach((cat: any) => {
-                    catalogoString += `\n--- Categoría: ${cat.category || 'General'} ---\n`;
-                    if (cat.items && Array.isArray(cat.items)) {
-                      cat.items.forEach((item: any) => {
-                        if (item.available !== false) { // Filtramos para solo ofrecer lo disponible
-                          catalogoString += `- ${item.name}: $${item.price}\n  Descripción: ${item.description}\n`;
-                        }
-                      });
+              if (menuDocSnap.exists() && menuDocSnap.data().catalog) {
+                menuDocSnap.data().catalog.forEach((cat: any) => {
+                  catalogoString += `\n--- Categoría: ${cat.category || 'General'} ---\n`;
+                  cat.items?.forEach((item: any) => {
+                    if (item.available !== false) { 
+                      catalogoString += `- ${item.name}: $${item.price}\n  Descripción: ${item.description}\n`;
                     }
                   });
-                }
+                });
               } else {
                 catalogoString += "No hay productos listados por el momento.\n";
               }
             } catch (menuError) {
-              console.error("❌ Error al recuperar el menú de Firebase:", menuError);
-              catalogoString += "Error al cargar el catálogo de productos.\n";
+              console.error("❌ Error al recuperar catálogo:", menuError);
             }
 
-            // Auditoría en consola para verificar que el catálogo se leyó correctamente
-            console.log("📦 Catálogo inyectado a la IA:\n", catalogoString);
+            // 🚀 PASO B.2: PROCESAMIENTO INTELIGENTE DE HORARIOS
+            const schedule = businessData.schedule;
+            let horarioString = "Horario de operación semanal:\n";
+            
+            if (schedule) {
+              const diasMap: Record<string, string> = { monday: "Lunes", tuesday: "Martes", wednesday: "Miércoles", thursday: "Jueves", friday: "Viernes", saturday: "Sábado", sunday: "Domingo" };
+              for (const [key, name] of Object.entries(diasMap)) {
+                if (schedule[key] && schedule[key].isOpen) {
+                  horarioString += `- ${name}: de ${schedule[key].open} a ${schedule[key].close}\n`;
+                } else {
+                  horarioString += `- ${name}: CERRADO (No agendar)\n`;
+                }
+              }
+            } else {
+              horarioString += "- Horario estándar. Asume abierto en horario comercial normal.\n";
+            }
 
-            // PASO B.2: Inyección del Cerebro OpenAI con Contexto y Catálogo
+            // Fechas bloqueadas (Vacaciones/Festivos)
+            const blockedDates = businessData.blockedDates && businessData.blockedDates.length > 0 
+              ? businessData.blockedDates.join(", ") 
+              : "Ninguno";
+
+            // Inyectar fecha actual para que la IA entienda el "hoy" y "mañana"
+            const fechaActual = new Date().toLocaleString("es-MX", { timeZone: "America/Mexico_City", dateStyle: "full", timeStyle: "short" });
+
+            // PASO B.3: Inyección en OpenAI
             try {
-              const contextoBase = businessData.aiPromptContext || `Eres el asistente virtual de ventas para el negocio '${businessData.businessName}'. Tu objetivo es ser amable, conciso y ayudar al cliente a resolver dudas. Responde en un máximo de 3 oraciones cortas.`;
+              const contextoBase = businessData.aiPromptContext || `Eres el asistente virtual de ventas para el negocio '${businessData.businessName}'. Tu objetivo es ser amable, conciso y ayudar al cliente a agendar citas o hacer pedidos.`;
 
               const promptFinal = `
 ${contextoBase}
 
+HOY ES: ${fechaActual} (Toma esto como referencia estricta de tiempo).
+
 ${catalogoString}
 
+REGLAS DE AGENDA Y DISPONIBILIDAD:
+${horarioString}
+- Días festivos/excepciones (ESTÁ CERRADO, NO AGENDAR): ${blockedDates}
+
 REGLAS ESTRICTAS DE VENTAS:
-1. SOLO puedes ofrecer los productos listados en el catálogo anterior.
-2. Si el cliente pregunta precios, dale el precio exacto listado.
-3. Utiliza la descripción del catálogo para explicar los beneficios de cada producto.
-4. Si preguntan por algo que no está en el catálogo, indica amablemente que no cuentan con ello y ofrece la mejor alternativa de tu lista.
-5. Sé persuasivo e invita al cliente a concretar el pedido o agendar una cita.
-6. Responde de forma natural y concisa (máximo 2 a 3 párrafos cortos).
+1. SOLO ofrece productos/servicios del catálogo. Si no está, ofrece la mejor alternativa.
+2. PRECIOS EXACTOS. Da el precio listado sin inventar.
+3. RESTRICCIÓN DE HORARIO: NUNCA agendes ni ofrezcas disponibilidad fuera del horario de operación indicado arriba, ni en los días cerrados o festivos.
+4. Si el cliente pide cita en un día cerrado u horario inválido, infórmale el horario del negocio y ofrécele el día abierto más próximo.
+5. Sé conciso y persuasivo (máximo 2 a 3 párrafos cortos). Si el cliente está listo, invítalo a confirmar su reserva/pedido.
 `;
 
               const aiResponse = await openai.chat.completions.create({
-                model: "gpt-3.5-turbo", // Puedes usar gpt-4o-mini para producción
+                model: "gpt-3.5-turbo", 
                 messages: [
-                  {
-                    role: "system",
-                    content: promptFinal
-                  },
-                  {
-                    role: "user",
-                    content: incomingText
-                  }
+                  { role: "system", content: promptFinal },
+                  { role: "user", content: incomingText }
                 ],
-                temperature: 0.4, // Temperatura baja para precisión matemática en precios
+                temperature: 0.3, // Temperatura baja para respetar estrictamente las horas
               });
 
               const aiResponseText = aiResponse.choices[0].message.content;
-              
-              // Imprimimos el resultado en Vercel para probar la IA sin depender de Meta
-              console.log("🧠 Respuesta de la IA con catálogo generada con éxito:\n", aiResponseText);
+              console.log("🧠 Respuesta IA:\n", aiResponseText);
 
-              // PASO B.3: Guardar el registro de la conversación en Firebase (Sin bloquear el flujo)
+              // PASO B.4: Guardar historial en Firebase de forma asíncrona
               try {
                 await addDoc(collection(db, "businesses", businessId, "chats"), {
                   clienteCelular: clientPhone,
@@ -156,40 +151,32 @@ REGLAS ESTRICTAS DE VENTAS:
                   fecha: serverTimestamp(),
                   leidoPorHumano: false
                 });
-                console.log("💾 Historial guardado en Firebase exitosamente.");
               } catch (dbError) {
-                console.error("❌ Error guardando el historial en Firebase:", dbError);
+                console.error("❌ Error guardando chat:", dbError);
               }
 
-              // PASO C: Enviar la respuesta de vuelta por WhatsApp
-              // ⚠️ MANTENEMOS COMENTADO hasta que Meta quite la restricción de "Pending review"
+              // PASO C: Enviar mensaje (DESCOMENTAR CUANDO META LIBERE EL NÚMERO)
               // await sendWhatsAppMessage(businessPhoneId, clientPhone, aiResponseText || "");
 
             } catch (aiError) {
-              console.error("❌ Error en el cerebro de OpenAI:", aiError);
+              console.error("❌ Error OpenAI:", aiError);
             }
           }
         }
       }
     }
-
-    // Siempre debemos responder 200 OK rápidamente a Meta para que no nos reintente enviar el mismo mensaje
     return new NextResponse("EVENT_RECEIVED", { status: 200 });
 
   } catch (error) {
-    console.error("❌ Error procesando el webhook:", error);
+    console.error("❌ Error en Webhook:", error);
     return new NextResponse("Internal Server Error", { status: 500 });
   }
 }
 
-// Función auxiliar para enviar el mensaje de vuelta usando la API Cloud de Meta
+// Envío a Meta Cloud API
 async function sendWhatsAppMessage(phoneNumberId: string, to: string, text: string) {
   const accessToken = process.env.META_ACCESS_TOKEN;
-  
-  if (!accessToken) {
-    console.error("Falta el META_ACCESS_TOKEN");
-    return;
-  }
+  if (!accessToken) return;
 
   const url = `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`;
 
@@ -203,22 +190,18 @@ async function sendWhatsAppMessage(phoneNumberId: string, to: string, text: stri
       body: JSON.stringify({
         messaging_product: "whatsapp",
         recipient_type: "individual",
-        to: to, // Número del cliente
+        to: to, 
         type: "text",
-        text: {
-          preview_url: false,
-          body: text // La respuesta de tu IA
-        }
+        text: { preview_url: false, body: text }
       }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error("❌ Error enviando mensaje a Meta:", errorData);
+      console.error("❌ Error API Meta:", await response.json());
     } else {
-      console.log(`🚀 Mensaje enviado con éxito a ${to}`);
+      console.log(`🚀 Mensaje enviado a ${to}`);
     }
   } catch (error) {
-    console.error("❌ Error de red enviando mensaje:", error);
+    console.error("❌ Error de red:", error);
   }
 }
